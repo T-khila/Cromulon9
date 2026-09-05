@@ -2,21 +2,62 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <!-- Критически важные теги для корректного отображения в Telegram Mini Apps -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Get Schwifty: Cromulon Attack</title>
-    <script src="https://jsdelivr.net"></script>
+    
+    <!-- Скрипт Telegram WebApp для интеграции -->
+    <script src="https://telegram.org"></script>
+    <!-- Официальное стабильное зеркало Phaser 3 -->
+    <script src="https://cloudflare.com"></script>
+    
     <style>
-        body { margin: 0; padding: 0; background-color: #000; overflow: hidden; }
-        canvas { display: block; margin: 0 auto; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #1d003b;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #game-container {
+            width: 100%;
+            height: 100%;
+            max-width: 400px;
+            max-height: 600px;
+        }
+        canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: contain;
+        }
     </style>
 </head>
 <body>
 
+<!-- Явно указываем контейнер, куда Phaser должен принудительно встроить игру -->
+<div id="game-container"></div>
+
 <script>
+// Инициализируем Telegram WebApp, если он запущен внутри ТГ
+if (window.Telegram && window.Telegram.WebApp) {
+    window.Telegram.WebApp.ready();
+    window.Telegram.WebApp.expand(); // Разворачиваем окно на максимум экрана телефона
+}
+
 const config = {
     type: Phaser.AUTO,
+    parent: 'game-container', // Привязка к нашему HTML-блоку
     width: 400,
     height: 600,
+    scale: {
+        mode: Phaser.Scale.FIT, // Авто-масштабирование под размер экрана смартфона
+        autoCenter: Phaser.Scale.CENTER_BOTH
+    },
     physics: {
         default: 'arcade',
         arcade: { 
@@ -33,12 +74,9 @@ let cromulons;
 let score = 0;
 let scoreText;
 let isGameOver = false;
-let isGameStarted = false; // Флаг: запущена ли игра из меню
+let isGameStarted = false; 
 let spawnTimer;
-
-// Элементы меню
 let menuContainer;
-let bgStars = [];
 
 function preload() {}
 
@@ -47,56 +85,47 @@ function create() {
     isGameStarted = false;
     score = 0;
 
-    // Глубокий фиолетовый космический фон сцены
     this.cameras.main.setBackgroundColor('#1d003b');
     
-    // Генерируем красивые неоновые звезды
-    for (let i = 0; i < 40; i++) {
-        let star = this.add.circle(Phaser.Math.Between(0, 400), Phaser.Math.Between(0, 600), Phaser.Math.Between(2, 3), 0x00ffcc, 0.4);
-        bgStars.push(star);
+    // Рисуем сетку звезд
+    for (let i = 0; i < 30; i++) {
+        this.add.circle(Phaser.Math.Between(0, 400), Phaser.Math.Between(0, 600), Phaser.Math.Between(2, 3), 0x00ffcc, 0.4);
     }
 
-    // ИГРОК: Создаем космическую тарелку (яркий ЖЕЛТЫЙ блок)
+    // ИГРОК: Тарелка Рика
     cruiser = this.physics.add.rectangle(100, 250, 45, 45, 0xffff00);
     cruiser.body.setCollideWorldBounds(true);
     cruiser.body.setDragY(50); 
-    cruiser.body.setAllowGravity(false); // Отключаем гравитацию, пока мы в меню
+    cruiser.body.setAllowGravity(false); 
 
-    // ВРАГИ: Группа для Кромулонов
     cromulons = this.physics.add.group();
 
-    // СЧЕТ (скрыт, пока мы в меню)
     scoreText = this.add.text(20, 20, 'SCORE: 0', { font: '22px Arial Black', fill: '#ffffff' });
     scoreText.setVisible(false);
 
-    // СТОЛКНОВЕНИЯ
     this.physics.add.overlap(cruiser, cromulons, gameOver, null, this);
 
-    // УПРАВЛЕНИЕ: Тап по экрану во время игры
-    this.input.on('pointerdown', function (pointer) {
+    // Управление
+    this.input.on('pointerdown', function () {
         if (!isGameStarted || isGameOver) return;
-        cruiser.body.setVelocityY(-380); // Прыжок вверх
+        cruiser.body.setVelocityY(-380); 
     });
 
-    // --- СОЗДАЕМ ИНТЕРФЕЙС ГЛАВНОГО МЕНЮ ---
+    // МЕНЮ ИНТЕРФЕЙСА
     menuContainer = this.add.container(0, 0);
 
-    // Огромная голова Кромулона на фоне меню (Бежевый овал)
-    let menuCromulon = this.add.ellipse(200, 140, 110, 140, 0xd2b48c).setAlpha(0.7);
+    let menuCromulon = this.add.ellipse(200, 140, 110, 140, 0xd2b48c).setAlpha(0.8);
     let cromulonEyes = this.add.text(175, 110, '•  •', { font: '32px Arial Black', fill: '#000000' });
     
-    // Текст названия шоу
     let titleText = this.add.text(65, 250, 'PLANET MUSIC', { font: '34px Arial Black', fill: '#ffff00', stroke: '#000000', strokeThickness: 6 });
     let subtitleText = this.add.text(90, 300, 'CROMULON ATTACK', { font: '20px Arial Black', fill: '#00ffcc', stroke: '#000000', strokeThickness: 4 });
 
-    // Кнопка СТАРТ (Интерактивная зона)
+    // Кнопка СТАРТ
     let startButtonBg = this.add.rectangle(200, 420, 240, 60, 0xff0055).setInteractive({ useHandCursor: true });
     let startButtonText = this.add.text(125, 402, 'START SHOW', { font: '22px Arial Black', fill: '#ffffff' });
 
-    // Добавляем всё в контейнер меню, чтобы потом легко спрятать одной командой
     menuContainer.add([menuCromulon, cromulonEyes, titleText, subtitleText, startButtonBg, startButtonText]);
 
-    // Логика нажатия на кнопку СТАРТ
     startButtonBg.on('pointerdown', () => {
         startGame.call(this);
     });
@@ -104,16 +133,11 @@ function create() {
 
 function startGame() {
     isGameStarted = true;
-    
-    // Прячем стартовое меню
     menuContainer.setVisible(false);
-    
-    // Включаем физику, счет и гравитацию для тарелки Рика
     scoreText.setVisible(true);
     cruiser.body.setAllowGravity(true);
-    cruiser.body.setVelocityY(-300); // Сразу даем небольшой импульс вверх при старте
+    cruiser.body.setVelocityY(-300); 
 
-    // Запускаем таймер появления Кромулонов
     spawnTimer = this.time.addEvent({
         delay: 1300,
         callback: spawnCromulon,
@@ -124,14 +148,12 @@ function startGame() {
 
 function update() {
     if (!isGameStarted || isGameOver) {
-        // Эффект плавного парения тарелки Рика в главном меню вверх-вниз
         if (!isGameStarted) {
             cruiser.y = 350 + Math.sin(this.time.now / 200) * 10;
         }
         return;
     }
 
-    // Проверяем Кромулонов и считаем очки
     cromulons.getChildren().forEach(cromulon => {
         if (!cromulon.scored && cromulon.x < cruiser.x) {
             cromulon.scored = true;
@@ -146,16 +168,11 @@ function update() {
 
 function spawnCromulon() {
     if (isGameOver) return;
-
     const randomY = Phaser.Math.Between(60, 540);
-    
-    // Препятствие: Летящие головы Кромулонов (Красные блоки)
     let cromulon = this.physics.add.rectangle(450, randomY, 65, 85, 0xff0055);
-    
     this.physics.add.existing(cromulon);
     cromulon.body.setAllowGravity(false); 
     cromulon.body.setVelocityX(-240); 
-    
     cromulon.scored = false;
     cromulons.add(cromulon);
 }
@@ -163,17 +180,13 @@ function spawnCromulon() {
 function gameOver() {
     if (isGameOver) return;
     isGameOver = true;
-    
     this.physics.pause();
     if (spawnTimer) spawnTimer.destroy();
-
     cruiser.setFillStyle(0xff0000); 
 
-    // Фирменный проигрыш
     this.add.text(40, 240, 'BOO! NOT COOL!', { font: '36px Arial Black', fill: '#ff0033', stroke: '#000000', strokeThickness: 5 });
     this.add.text(100, 300, 'DISQUALIFIED', { font: '22px Arial Black', fill: '#ffcc00', stroke: '#000000', strokeThickness: 4 });
     
-    // Перезапуск всей сцены (возврат в главное меню) через 2.5 секунды
     this.time.delayedCall(2500, () => {
         this.scene.restart();
     }, [], this);
