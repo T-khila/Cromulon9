@@ -20,7 +20,7 @@ const config = {
     physics: {
         default: 'arcade',
         arcade: { 
-            gravity: { y: 1000 }, // Гравитация для тарелки
+            gravity: { y: 900 }, 
             debug: false 
         }
     },
@@ -28,88 +28,116 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
-let cruiser; // Космическая тарелка Рика
-let cromulons; // Группа летящих голов
+let cruiser; 
+let cromulons; 
 let score = 0;
 let scoreText;
 let isGameOver = false;
+let isGameStarted = false; // Флаг: запущена ли игра из меню
 let spawnTimer;
 
-function preload() {
-    // Когда найдешь картинки, просто раскомментируй эти строки:
-    // this.load.image('cruiser', 'assets/space_cruiser.png');
-    // this.load.image('cromulon', 'assets/cromulon.png');
-}
+// Элементы меню
+let menuContainer;
+let bgStars = [];
+
+function preload() {}
 
 function create() {
     isGameOver = false;
+    isGameStarted = false;
     score = 0;
 
-    // Глубокий космический фон планеты Кромулон
-    this.cameras.main.setBackgroundColor('#120124');
+    // Глубокий фиолетовый космический фон сцены
+    this.cameras.main.setBackgroundColor('#1d003b');
     
-    // Эффект далеких звезд на фоне (простые точки)
-    for (let i = 0; i < 30; i++) {
-        this.add.circle(Phaser.Math.Between(0, 400), Phaser.Math.Between(0, 600), Phaser.Math.Between(1, 3), 0xffffff, 0.5);
+    // Генерируем красивые неоновые звезды
+    for (let i = 0; i < 40; i++) {
+        let star = this.add.circle(Phaser.Math.Between(0, 400), Phaser.Math.Between(0, 600), Phaser.Math.Between(2, 3), 0x00ffcc, 0.4);
+        bgStars.push(star);
     }
 
-    // ИГРОК: Создаем космическую тарелку (пока в виде серебряного овала)
-    cruiser = this.physics.add.ellipse(80, 300, 50, 25, 0xa9a9a9);
+    // ИГРОК: Создаем космическую тарелку (яркий ЖЕЛТЫЙ блок)
+    cruiser = this.physics.add.rectangle(100, 250, 45, 45, 0xffff00);
     cruiser.body.setCollideWorldBounds(true);
-    // Делаем тарелку чуть более отзывчивой к физике
-    cruiser.body.setDragY(100); 
+    cruiser.body.setDragY(50); 
+    cruiser.body.setAllowGravity(false); // Отключаем гравитацию, пока мы в меню
 
-    // ВРАГИ: Группа для голов Кромулонов
+    // ВРАГИ: Группа для Кромулонов
     cromulons = this.physics.add.group();
 
-    // Спавн голов Кромулонов каждые 1.2 секунды
+    // СЧЕТ (скрыт, пока мы в меню)
+    scoreText = this.add.text(20, 20, 'SCORE: 0', { font: '22px Arial Black', fill: '#ffffff' });
+    scoreText.setVisible(false);
+
+    // СТОЛКНОВЕНИЯ
+    this.physics.add.overlap(cruiser, cromulons, gameOver, null, this);
+
+    // УПРАВЛЕНИЕ: Тап по экрану во время игры
+    this.input.on('pointerdown', function (pointer) {
+        if (!isGameStarted || isGameOver) return;
+        cruiser.body.setVelocityY(-380); // Прыжок вверх
+    });
+
+    // --- СОЗДАЕМ ИНТЕРФЕЙС ГЛАВНОГО МЕНЮ ---
+    menuContainer = this.add.container(0, 0);
+
+    // Огромная голова Кромулона на фоне меню (Бежевый овал)
+    let menuCromulon = this.add.ellipse(200, 140, 110, 140, 0xd2b48c).setAlpha(0.7);
+    let cromulonEyes = this.add.text(175, 110, '•  •', { font: '32px Arial Black', fill: '#000000' });
+    
+    // Текст названия шоу
+    let titleText = this.add.text(65, 250, 'PLANET MUSIC', { font: '34px Arial Black', fill: '#ffff00', stroke: '#000000', strokeThickness: 6 });
+    let subtitleText = this.add.text(90, 300, 'CROMULON ATTACK', { font: '20px Arial Black', fill: '#00ffcc', stroke: '#000000', strokeThickness: 4 });
+
+    // Кнопка СТАРТ (Интерактивная зона)
+    let startButtonBg = this.add.rectangle(200, 420, 240, 60, 0xff0055).setInteractive({ useHandCursor: true });
+    let startButtonText = this.add.text(125, 402, 'START SHOW', { font: '22px Arial Black', fill: '#ffffff' });
+
+    // Добавляем всё в контейнер меню, чтобы потом легко спрятать одной командой
+    menuContainer.add([menuCromulon, cromulonEyes, titleText, subtitleText, startButtonBg, startButtonText]);
+
+    // Логика нажатия на кнопку СТАРТ
+    startButtonBg.on('pointerdown', () => {
+        startGame.call(this);
+    });
+}
+
+function startGame() {
+    isGameStarted = true;
+    
+    // Прячем стартовое меню
+    menuContainer.setVisible(false);
+    
+    // Включаем физику, счет и гравитацию для тарелки Рика
+    scoreText.setVisible(true);
+    cruiser.body.setAllowGravity(true);
+    cruiser.body.setVelocityY(-300); // Сразу даем небольшой импульс вверх при старте
+
+    // Запускаем таймер появления Кромулонов
     spawnTimer = this.time.addEvent({
-        delay: 1200,
+        delay: 1300,
         callback: spawnCromulon,
         callbackScope: this,
         loop: true
     });
-
-    // УПРАВЛЕНИЕ: Тап по экрану дает тарелке импульс вверх (как реактивный двигатель)
-    this.input.on('pointerdown', function () {
-        if (isGameOver) return;
-        cruiser.body.setVelocityY(-350);
-        
-        // Визуальный наклон тарелки вверх при взлете (если бы это был спрайт)
-        cruiser.angle = -15;
-    });
-
-    // СЧЕТ
-    scoreText = this.add.text(20, 20, 'SCORE: 0', { font: '22px Arial Black', fill: '#00ffcc' });
-
-    // СТОЛКНОВЕНИЯ: Если тарелка врезается в Кромулона
-    this.physics.add.overlap(cruiser, cromulons, gameOver, null, this);
 }
 
 function update() {
-    if (isGameOver) return;
-
-    // Плавный наклон тарелки вниз, когда она падает
-    if (cruiser.body.velocity.y > 0 && cruiser.angle < 20) {
-        cruiser.angle += 1;
+    if (!isGameStarted || isGameOver) {
+        // Эффект плавного парения тарелки Рика в главном меню вверх-вниз
+        if (!isGameStarted) {
+            cruiser.y = 350 + Math.sin(this.time.now / 200) * 10;
+        }
+        return;
     }
 
-    // Если тарелка упала на землю или улетела в космос — проигрыш
-    if (cruiser.y > 585 || cruiser.y < 15) {
-        gameOver.call(this);
-    }
-
-    // Проверяем головы, которые улетели за левый край экрана, и начисляем очки
+    // Проверяем Кромулонов и считаем очки
     cromulons.getChildren().forEach(cromulon => {
         if (!cromulon.scored && cromulon.x < cruiser.x) {
             cromulon.scored = true;
             score += 1;
             scoreText.setText('SCORE: ' + score);
-            
-            // Каждый 10 очков увеличиваем сложность (опционально)
         }
-        
-        // Удаляем голову, если она улетела далеко за экран, чтобы игра не лагала
         if (cromulon.x < -100) {
             cromulon.destroy();
         }
@@ -119,19 +147,14 @@ function update() {
 function spawnCromulon() {
     if (isGameOver) return;
 
-    // Случайная высота появления головы Кромулона
-    const randomY = Phaser.Math.Between(50, 550);
+    const randomY = Phaser.Math.Between(60, 540);
     
-    // Создаем голову (пока в виде огромного желто-коричневого круга)
-    // В оригинале Кромулоны прямоугольно-овальные, сделаем размер 70x90
-    let cromulon = this.physics.add.ellipse(450, randomY, 70, 90, 0xd2b48c);
+    // Препятствие: Летящие головы Кромулонов (Красные блоки)
+    let cromulon = this.physics.add.rectangle(450, randomY, 65, 85, 0xff0055);
     
     this.physics.add.existing(cromulon);
-    cromulon.body.setAllowGravity(false); // Головы летят по воздуху, гравитация на них не действует
-    
-    // Скорость полета головы на игрока (от -220 до -300 для хаотичности)
-    const randomSpeed = Phaser.Math.Between(-220, -320);
-    cromulon.body.setVelocityX(randomSpeed);
+    cromulon.body.setAllowGravity(false); 
+    cromulon.body.setVelocityX(-240); 
     
     cromulon.scored = false;
     cromulons.add(cromulon);
@@ -142,16 +165,15 @@ function gameOver() {
     isGameOver = true;
     
     this.physics.pause();
-    spawnTimer.destroy(); // Перестаем спавнить новые головы
+    if (spawnTimer) spawnTimer.destroy();
 
-    // Тарелка взрывается (краснеет)
     cruiser.setFillStyle(0xff0000); 
 
-    // Легендарные фразы при проигрыше
-    this.add.text(50, 250, 'BOO! NOT COOL!', { font: '36px Arial Black', fill: '#ff0055', stroke: '#000000', strokeThickness: 6 });
-    this.add.text(85, 310, 'DISQUALIFIED!', { font: '24px Arial Black', fill: '#ffcc00', stroke: '#000000', strokeThickness: 4 });
+    // Фирменный проигрыш
+    this.add.text(40, 240, 'BOO! NOT COOL!', { font: '36px Arial Black', fill: '#ff0033', stroke: '#000000', strokeThickness: 5 });
+    this.add.text(100, 300, 'DISQUALIFIED', { font: '22px Arial Black', fill: '#ffcc00', stroke: '#000000', strokeThickness: 4 });
     
-    // Перезапуск через 2.5 секунды
+    // Перезапуск всей сцены (возврат в главное меню) через 2.5 секунды
     this.time.delayedCall(2500, () => {
         this.scene.restart();
     }, [], this);
