@@ -2,195 +2,249 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <!-- Критически важные теги для корректного отображения в Telegram Mini Apps -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Get Schwifty: Cromulon Attack</title>
-    
-    <!-- Скрипт Telegram WebApp для интеграции -->
+    <title>Get Schwifty</title>
     <script src="https://telegram.org"></script>
-    <!-- Официальное стабильное зеркало Phaser 3 -->
-    <script src="https://cloudflare.com"></script>
-    
     <style>
         html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: #1d003b;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #1d003b; overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
         }
-        #game-container {
-            width: 100%;
-            height: 100%;
-            max-width: 400px;
-            max-height: 600px;
-        }
-        canvas {
-            display: block;
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: contain;
+        #gameCanvas {
+            background-color: #120026;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
     </style>
 </head>
 <body>
 
-<!-- Явно указываем контейнер, куда Phaser должен принудительно встроить игру -->
-<div id="game-container"></div>
+<canvas id="gameCanvas" width="400" height="600"></canvas>
 
 <script>
-// Инициализируем Telegram WebApp, если он запущен внутри ТГ
+// Интеграция с Telegram
 if (window.Telegram && window.Telegram.WebApp) {
     window.Telegram.WebApp.ready();
-    window.Telegram.WebApp.expand(); // Разворачиваем окно на максимум экрана телефона
+    window.Telegram.WebApp.expand();
 }
 
-const config = {
-    type: Phaser.AUTO,
-    parent: 'game-container', // Привязка к нашему HTML-блоку
-    width: 400,
-    height: 600,
-    scale: {
-        mode: Phaser.Scale.FIT, // Авто-масштабирование под размер экрана смартфона
-        autoCenter: Phaser.Scale.CENTER_BOTH
-    },
-    physics: {
-        default: 'arcade',
-        arcade: { 
-            gravity: { y: 900 }, 
-            debug: false 
-        }
-    },
-    scene: { preload: preload, create: create, update: update }
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// Состояние игры
+let gameState = "MENU"; // MENU, PLAYING, GAMEOVER
+let score = 0;
+
+// Игрок (Тарелка Рика)
+let cruiser = {
+    x: 80, y: 250,
+    width: 50, height: 30,
+    velocityY: 0,
+    gravity: 0.4,
+    jump: -7.5
 };
 
-const game = new Phaser.Game(config);
-let cruiser; 
-let cromulons; 
-let score = 0;
-let scoreText;
-let isGameOver = false;
-let isGameStarted = false; 
-let spawnTimer;
-let menuContainer;
+// Препятствия (Кромулоны)
+let cromulons = [];
+let lastSpawnTime = 0;
+let spawnDelay = 1300; 
 
-function preload() {}
-
-function create() {
-    isGameOver = false;
-    isGameStarted = false;
-    score = 0;
-
-    this.cameras.main.setBackgroundColor('#1d003b');
-    
-    // Рисуем сетку звезд
-    for (let i = 0; i < 30; i++) {
-        this.add.circle(Phaser.Math.Between(0, 400), Phaser.Math.Between(0, 600), Phaser.Math.Between(2, 3), 0x00ffcc, 0.4);
-    }
-
-    // ИГРОК: Тарелка Рика
-    cruiser = this.physics.add.rectangle(100, 250, 45, 45, 0xffff00);
-    cruiser.body.setCollideWorldBounds(true);
-    cruiser.body.setDragY(50); 
-    cruiser.body.setAllowGravity(false); 
-
-    cromulons = this.physics.add.group();
-
-    scoreText = this.add.text(20, 20, 'SCORE: 0', { font: '22px Arial Black', fill: '#ffffff' });
-    scoreText.setVisible(false);
-
-    this.physics.add.overlap(cruiser, cromulons, gameOver, null, this);
-
-    // Управление
-    this.input.on('pointerdown', function () {
-        if (!isGameStarted || isGameOver) return;
-        cruiser.body.setVelocityY(-380); 
-    });
-
-    // МЕНЮ ИНТЕРФЕЙСА
-    menuContainer = this.add.container(0, 0);
-
-    let menuCromulon = this.add.ellipse(200, 140, 110, 140, 0xd2b48c).setAlpha(0.8);
-    let cromulonEyes = this.add.text(175, 110, '•  •', { font: '32px Arial Black', fill: '#000000' });
-    
-    let titleText = this.add.text(65, 250, 'PLANET MUSIC', { font: '34px Arial Black', fill: '#ffff00', stroke: '#000000', strokeThickness: 6 });
-    let subtitleText = this.add.text(90, 300, 'CROMULON ATTACK', { font: '20px Arial Black', fill: '#00ffcc', stroke: '#000000', strokeThickness: 4 });
-
-    // Кнопка СТАРТ
-    let startButtonBg = this.add.rectangle(200, 420, 240, 60, 0xff0055).setInteractive({ useHandCursor: true });
-    let startButtonText = this.add.text(125, 402, 'START SHOW', { font: '22px Arial Black', fill: '#ffffff' });
-
-    menuContainer.add([menuCromulon, cromulonEyes, titleText, subtitleText, startButtonBg, startButtonText]);
-
-    startButtonBg.on('pointerdown', () => {
-        startGame.call(this);
+// Звезды на фоне
+let stars = [];
+for (let i = 0; i < 40; i++) {
+    stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 2 + 1,
+        alpha: Math.random() * 0.5 + 0.3
     });
 }
 
-function startGame() {
-    isGameStarted = true;
-    menuContainer.setVisible(false);
-    scoreText.setVisible(true);
-    cruiser.body.setAllowGravity(true);
-    cruiser.body.setVelocityY(-300); 
+// Обработка кликов/тапов
+canvas.addEventListener("pointerdown", (e) => {
+    if (gameState === "MENU") {
+        // Проверяем клик по кнопке START SHOW (центр: 200, y: 420, размеры: 240x60)
+        let rect = canvas.getBoundingClientRect();
+        let clickX = (e.clientX - rect.left) * (canvas.width / rect.width);
+        let clickY = (e.clientY - rect.top) * (canvas.height / rect.height);
+        
+        if (clickX >= 80 && clickX <= 320 && clickY >= 390 && clickY <= 450) {
+            resetGame();
+            gameState = "PLAYING";
+        }
+    } else if (gameState === "PLAYING") {
+        cruiser.velocityY = cruiser.jump;
+    } else if (gameState === "GAMEOVER") {
+        gameState = "MENU";
+    }
+});
 
-    spawnTimer = this.time.addEvent({
-        delay: 1300,
-        callback: spawnCromulon,
-        callbackScope: this,
-        loop: true
-    });
+function resetGame() {
+    score = 0;
+    cruiser.y = 250;
+    cruiser.velocityY = 0;
+    cromulons = [];
+    lastSpawnTime = Date.now();
+}
+
+// Главный игровой цикл
+function gameLoop() {
+    update();
+    render();
+    requestAnimationFrame(gameLoop);
 }
 
 function update() {
-    if (!isGameStarted || isGameOver) {
-        if (!isGameStarted) {
-            cruiser.y = 350 + Math.sin(this.time.now / 200) * 10;
+    let now = Date.now();
+
+    if (gameState === "MENU") {
+        // Плавное покачивание тарелки в меню
+        cruiser.y = 280 + Math.sin(now / 200) * 10;
+    } 
+    
+    else if (gameState === "PLAYING") {
+        // Физика тарелки
+        cruiser.velocityY += cruiser.gravity;
+        cruiser.y += cruiser.velocityY;
+
+        // Ограничения экрана
+        if (cruiser.y < 0) { cruiser.y = 0; cruiser.velocityY = 0; }
+        if (cruiser.y + cruiser.height > canvas.height) {
+            gameState = "GAMEOVER";
         }
-        return;
+
+        // Спавн Кромулонов
+        if (now - lastSpawnTime > spawnDelay) {
+            cromulons.push({
+                x: canvas.width + 50,
+                y: Math.random() * (canvas.height - 150) + 50,
+                width: 70, height: 95,
+                speed: 4,
+                scored: false
+            });
+            lastSpawnTime = now;
+        }
+
+        // Движение Кромулонов
+        for (let i = cromulons.length - 1; i >= 0; i--) {
+            let c = cromulons[i];
+            c.x -= c.speed;
+
+            // Подсчет очков
+            if (!c.scored && c.x < cruiser.x) {
+                c.scored = true;
+                score++;
+            }
+
+            // Проверка столкновения (AABB collision)
+            if (cruiser.x < c.x + c.width &&
+                cruiser.x + cruiser.width > c.x &&
+                cruiser.y < c.y + c.height &&
+                cruiser.y + cruiser.height > c.y) {
+                gameState = "GAMEOVER";
+            }
+
+            // Удаление улетевших
+            if (c.x < -100) cromulons.splice(i, 1);
+        }
+    }
+}
+
+function render() {
+    // Очистка экрана
+    ctx.fillStyle = "#1d003b";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Рисуем звезды
+    ctx.fillStyle = "#00ffcc";
+    stars.forEach(star => {
+        ctx.globalAlpha = star.alpha;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1.0;
+
+    // РЕНДЕР МЕНЮ
+    if (gameState === "MENU") {
+        // Голова Кромулона на фоне
+        ctx.fillStyle = "#d2b48c";
+        ctx.beginPath();
+        ctx.ellipse(200, 140, 55, 70, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Глаза Кромулона
+        ctx.fillStyle = "#000000";
+        ctx.font = "bold 24px Arial";
+        ctx.fillText("•  •", 183, 135);
+
+        // Название игры
+        ctx.fillStyle = "#ffff00";
+        ctx.font = "bold 32px Arial Black";
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 5;
+        ctx.strokeText("PLANET MUSIC", 65, 250);
+        ctx.fillText("PLANET MUSIC", 65, 250);
+
+        ctx.fillStyle = "#00ffcc";
+        ctx.font = "bold 18px Arial Black";
+        ctx.strokeText("CROMULON ATTACK", 95, 290);
+        ctx.fillText("CROMULON ATTACK", 95, 290);
+
+        // Кнопка START SHOW
+        ctx.fillStyle = "#ff0055";
+        ctx.fillRect(80, 390, 240, 60);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 20px Arial";
+        ctx.fillText("START SHOW", 135, 427);
     }
 
-    cromulons.getChildren().forEach(cromulon => {
-        if (!cromulon.scored && cromulon.x < cruiser.x) {
-            cromulon.scored = true;
-            score += 1;
-            scoreText.setText('SCORE: ' + score);
-        }
-        if (cromulon.x < -100) {
-            cromulon.destroy();
-        }
-    });
+    // РЕНДЕР ИГРЫ
+    if (gameState === "PLAYING" || gameState === "GAMEOVER") {
+        // Рисуем Кромулонов (Красные головы-блоки)
+        ctx.fillStyle = "#ff0055";
+        cromulons.forEach(c => {
+            ctx.fillRect(c.x, c.y, c.width, c.height);
+            // Простые глазки на блоках, чтобы были похожи на головы
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(c.x + 15, c.y + 20, 8, 8);
+            ctx.fillRect(c.x + 45, c.y + 20, 8, 8);
+            ctx.fillStyle = "#ff0055";
+        });
+
+        // Рисуем счет
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 22px Arial";
+        ctx.fillText("SCORE: " + score, 20, 40);
+    }
+
+    // Рисуем игрока (Желтая космическая тарелка)
+    ctx.fillStyle = "#ffff00";
+    ctx.fillRect(cruiser.x, cruiser.y, cruiser.width, cruiser.height);
+    // Иллюминатор тарелки
+    ctx.fillStyle = "#00ffff";
+    ctx.fillRect(cruiser.x + 15, cruiser.y + 5, 20, 10);
+
+    // РЕНДЕР GAME OVER
+    if (gameState === "GAMEOVER") {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "#ff0033";
+        ctx.font = "bold 34px Arial Black";
+        ctx.fillText("BOO! NOT COOL!", 45, 260);
+
+        ctx.fillStyle = "#ffcc00";
+        ctx.font = "bold 20px Arial";
+        ctx.fillText("DISQUALIFIED", 130, 310);
+        
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "14px Arial";
+        ctx.fillText("Tap anywhere to retry", 130, 500);
+    }
 }
 
-function spawnCromulon() {
-    if (isGameOver) return;
-    const randomY = Phaser.Math.Between(60, 540);
-    let cromulon = this.physics.add.rectangle(450, randomY, 65, 85, 0xff0055);
-    this.physics.add.existing(cromulon);
-    cromulon.body.setAllowGravity(false); 
-    cromulon.body.setVelocityX(-240); 
-    cromulon.scored = false;
-    cromulons.add(cromulon);
-}
-
-function gameOver() {
-    if (isGameOver) return;
-    isGameOver = true;
-    this.physics.pause();
-    if (spawnTimer) spawnTimer.destroy();
-    cruiser.setFillStyle(0xff0000); 
-
-    this.add.text(40, 240, 'BOO! NOT COOL!', { font: '36px Arial Black', fill: '#ff0033', stroke: '#000000', strokeThickness: 5 });
-    this.add.text(100, 300, 'DISQUALIFIED', { font: '22px Arial Black', fill: '#ffcc00', stroke: '#000000', strokeThickness: 4 });
-    
-    this.time.delayedCall(2500, () => {
-        this.scene.restart();
-    }, [], this);
-}
+// Запуск игры
+gameLoop();
 </script>
 
 </body>
