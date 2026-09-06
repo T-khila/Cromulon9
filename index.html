@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Get Schwifty - стиль Рика и Морти</title>
+    <title>Get Schwifty - победа при 1000</title>
     <script src="https://telegram.org"></script>
     <style>
         html, body {
@@ -28,7 +28,7 @@
 
 <script>
     // ============================================================
-    // Интеграция с Telegram (если запущено внутри WebApp)
+    // Интеграция с Telegram
     // ============================================================
     if (window.Telegram && window.Telegram.WebApp) {
         window.Telegram.WebApp.ready();
@@ -40,9 +40,9 @@
     const W = canvas.width, H = canvas.height;
 
     // ============================================================
-    // Состояние игры
+    // Состояния игры
     // ============================================================
-    const STATE = { MENU: 0, PLAYING: 1, GAMEOVER: 2 };
+    const STATE = { MENU: 0, PLAYING: 1, GAMEOVER: 2, WIN: 3 };
     let gameState = STATE.MENU;
     let score = 0;
     let lives = 3;
@@ -52,7 +52,7 @@
     let frameCount = 0;
 
     // ============================================================
-    // Игрок (тарелка в стиле Рика)
+    // Игрок (тарелка Рика)
     // ============================================================
     const cruiser = {
         x: 80, y: 250,
@@ -64,17 +64,17 @@
     };
 
     // ============================================================
-    // Препятствия: Кромулоны (опасные) и Метеориты (декоративные)
+    // Препятствия и декорации
     // ============================================================
     let cromulons = [];
     let meteors = [];
     let lastSpawnCromulon = 0;
     let lastSpawnMeteor = 0;
     const CROMULON_DELAY = 1200;   // мс
-    const METEOR_DELAY = 600;      // чаще для красоты
+    const METEOR_DELAY = 600;
 
     // ============================================================
-    // Фон: звёзды + туманности
+    // Фон
     // ============================================================
     const stars = [];
     for (let i = 0; i < 60; i++) {
@@ -88,34 +88,31 @@
     }
 
     // ============================================================
-    // Вспомогательные функции рисования в стиле Рика и Морти
+    // Рисование в стиле Рика и Морти
     // ============================================================
 
-    // ---- Тарелка Рика (зелёная, с антенной, иллюминатором) ----
     function drawCruiser() {
         const x = cruiser.x, y = cruiser.y, w = cruiser.width, h = cruiser.height;
         const cx = x + w/2, cy = y + h/2;
 
         ctx.save();
-        // Лёгкий наклон при движении
         ctx.translate(cx, cy);
         ctx.rotate(cruiser.tilt);
         ctx.translate(-cx, -cy);
 
-        // Тень для объёма
         ctx.shadowColor = '#00ff88';
         ctx.shadowBlur = 25;
 
-        // Основной корпус – овал (зелёный)
+        // Корпус
         ctx.beginPath();
         ctx.ellipse(cx, cy + 4, w/2 + 2, h/2 - 2, 0, 0, Math.PI * 2);
-        ctx.fillStyle = '#3cb371'; // средне-зелёный
+        ctx.fillStyle = '#3cb371';
         ctx.fill();
         ctx.strokeStyle = '#2e8b57';
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Верхний купол (полупрозрачный)
+        // Купол
         ctx.beginPath();
         ctx.ellipse(cx, cy - 6, 18, 14, 0, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(100, 200, 255, 0.4)';
@@ -124,7 +121,7 @@
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Антенна (типичный элемент Рика)
+        // Антенна
         ctx.shadowBlur = 5;
         ctx.strokeStyle = '#cccccc';
         ctx.lineWidth = 2;
@@ -137,7 +134,7 @@
         ctx.fillStyle = '#ff3333';
         ctx.fill();
 
-        // Иллюминатор (светится)
+        // Иллюминатор
         ctx.shadowBlur = 20;
         ctx.shadowColor = '#00ccff';
         ctx.beginPath();
@@ -147,14 +144,13 @@
         ctx.strokeStyle = '#006699';
         ctx.lineWidth = 1.5;
         ctx.stroke();
-        // Блик
         ctx.shadowBlur = 0;
         ctx.beginPath();
         ctx.arc(cx - 8, cy - 8, 4, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(255,255,255,0.7)';
         ctx.fill();
 
-        // Двигательные огни (снизу)
+        // Огни
         ctx.fillStyle = '#ff8800';
         ctx.shadowColor = '#ff8800';
         ctx.shadowBlur = 15;
@@ -165,7 +161,6 @@
         ctx.arc(x + w - 8, cy + 12, 5, 0, Math.PI * 2);
         ctx.fill();
 
-        // Маленькие фары
         ctx.fillStyle = '#ffffaa';
         ctx.shadowBlur = 8;
         ctx.beginPath();
@@ -180,7 +175,6 @@
         ctx.shadowColor = 'transparent';
     }
 
-    // ---- Голова Кромулона (как в сериале) ----
     function drawCromulon(c) {
         const x = c.x, y = c.y, w = c.width, h = c.height;
         const cx = x + w/2, cy = y + h/2;
@@ -189,7 +183,6 @@
         ctx.shadowColor = '#ff0055';
         ctx.shadowBlur = 15;
 
-        // Основной шар (красновато-оранжевый)
         ctx.beginPath();
         ctx.ellipse(cx, cy, w/2, h/2, 0, 0, Math.PI * 2);
         ctx.fillStyle = '#e06040';
@@ -198,7 +191,6 @@
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Глаза – большие белые с красными зрачками
         ctx.shadowBlur = 5;
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
@@ -208,7 +200,6 @@
         ctx.ellipse(cx + 16, cy - 8, 14, 18, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Зрачки (красные, со смещением в центр)
         ctx.fillStyle = '#ff0000';
         ctx.beginPath();
         ctx.arc(cx - 18, cy - 6, 7, 0, Math.PI * 2);
@@ -216,7 +207,6 @@
         ctx.beginPath();
         ctx.arc(cx + 18, cy - 6, 7, 0, Math.PI * 2);
         ctx.fill();
-        // Блики в зрачках
         ctx.fillStyle = 'white';
         ctx.beginPath();
         ctx.arc(cx - 20, cy - 10, 2.5, 0, Math.PI * 2);
@@ -225,13 +215,11 @@
         ctx.arc(cx + 16, cy - 10, 2.5, 0, Math.PI * 2);
         ctx.fill();
 
-        // Рот – широкая улыбка с зубами
         ctx.strokeStyle = '#000000';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(cx, cy + 10, 18, 0.1, Math.PI - 0.1);
         ctx.stroke();
-        // Зубы (верхние)
         ctx.fillStyle = '#ffffff';
         for (let i = -12; i <= 12; i += 8) {
             ctx.beginPath();
@@ -245,14 +233,11 @@
         ctx.shadowBlur = 0;
     }
 
-    // ---- Метеорит с огненным шлейфом (чисто декоративный) ----
     function drawMeteor(m) {
         const x = m.x, y = m.y, r = m.radius;
         const angle = Math.atan2(m.speedY, m.speedX);
 
         ctx.save();
-
-        // Огненный шлейф – градиент сзади
         const tailLen = r * 4.5;
         const grad = ctx.createRadialGradient(
             x, y, 0,
@@ -273,14 +258,12 @@
         );
         ctx.fill();
 
-        // Ядро метеорита (тёмно-серое с кратерами)
         ctx.shadowColor = '#ff8800';
         ctx.shadowBlur = 20;
         ctx.fillStyle = '#6b4a3c';
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fill();
-        // Кратеры
         ctx.fillStyle = '#3d2b1f';
         ctx.beginPath();
         ctx.arc(x - r*0.3, y - r*0.2, r*0.2, 0, Math.PI * 2);
@@ -288,7 +271,6 @@
         ctx.beginPath();
         ctx.arc(x + r*0.4, y + r*0.3, r*0.18, 0, Math.PI * 2);
         ctx.fill();
-        // Блик
         ctx.shadowBlur = 0;
         ctx.fillStyle = 'rgba(255,220,180,0.3)';
         ctx.beginPath();
@@ -298,7 +280,6 @@
         ctx.restore();
     }
 
-    // ---- Фон ----
     function drawBackground() {
         const grad = ctx.createLinearGradient(0, 0, 0, H);
         grad.addColorStop(0, '#0b001a');
@@ -317,7 +298,6 @@
         });
         ctx.globalAlpha = 1.0;
 
-        // Туманности
         ctx.globalAlpha = 0.08;
         ctx.fillStyle = '#aa66ff';
         ctx.beginPath();
@@ -331,7 +311,7 @@
     }
 
     // ============================================================
-    // Игровая логика
+    // Логика игры
     // ============================================================
 
     function resetGame() {
@@ -349,20 +329,21 @@
     }
 
     function spawnCromulon() {
-        // Теперь спавним по всей высоте, включая верх (y от 0 до H - height)
-        const maxY = H - 80; // высота головы ~80
+        const maxY = H - 80;
+        // Скорость зависит от счёта: каждые 100 очков +0.5 к базе
+        const speedBonus = Math.floor(score / 100) * 0.5;
+        const baseSpeed = 3.5 + Math.random() * 1.5;
         cromulons.push({
             x: W + 30,
             y: Math.random() * maxY,
             width: 60,
             height: 80,
-            speed: 3.5 + Math.random() * 1.5,
+            speed: baseSpeed + speedBonus,
             scored: false
         });
     }
 
     function spawnMeteor() {
-        // Декоративные метеориты – летят по диагонали из разных углов
         const fromLeft = Math.random() > 0.5;
         const startX = fromLeft ? -40 : W + 40;
         const startY = Math.random() * 150 - 50;
@@ -416,6 +397,16 @@
                 if (!c.scored && c.x + c.width < cruiser.x) {
                     c.scored = true;
                     score += 10;
+                    // Проверка на победу
+                    if (score >= 1000) {
+                        gameState = STATE.WIN;
+                        // Обновляем рекорд
+                        if (score > highScore) {
+                            highScore = score;
+                            localStorage.setItem('schwiftyHighScore', highScore);
+                        }
+                        return; // останавливаем обновление
+                    }
                 }
                 // Столкновение (если не неуязвим)
                 if (!invincible &&
@@ -429,7 +420,7 @@
                 if (c.x < -100) cromulons.splice(i, 1);
             }
 
-            // Движение метеоритов – БЕЗ СТОЛКНОВЕНИЯ (только визуал)
+            // Движение метеоритов – без столкновения
             for (let i = meteors.length - 1; i >= 0; i--) {
                 const m = meteors[i];
                 m.x += m.speedX;
@@ -448,12 +439,13 @@
                 }
             }
 
-            // Рекорд
+            // Обновление рекорда (если не победа)
             if (score > highScore) {
                 highScore = score;
                 localStorage.setItem('schwiftyHighScore', highScore);
             }
         }
+        // Состояние WIN не обновляется (игра заморожена)
     }
 
     function loseLife() {
@@ -465,7 +457,7 @@
             cruiser.velocityY = 0;
             invincible = true;
             invincibleTimer = 2000;
-            cromulons = []; // очищаем, чтобы не было мгновенной смерти
+            cromulons = [];
             meteors = [];
         }
     }
@@ -478,8 +470,11 @@
         ctx.clearRect(0, 0, W, H);
         drawBackground();
 
-        // ---- Меню ----
+        // Рисуем декоративные метеориты (всегда)
+        meteors.forEach(m => drawMeteor(m));
+
         if (gameState === STATE.MENU) {
+            // Меню
             ctx.textAlign = 'center';
             ctx.shadowColor = '#ffdd00';
             ctx.shadowBlur = 20;
@@ -518,17 +513,18 @@
             return;
         }
 
-        // ---- Игра и Game Over ----
-        // Рисуем декоративные метеориты (позади игрока)
-        meteors.forEach(m => drawMeteor(m));
-
-        // Рисуем Кромулонов
-        cromulons.forEach(c => drawCromulon(c));
+        // Рисуем Кромулонов (кроме экрана победы, но можно и рисовать)
+        if (gameState !== STATE.WIN) {
+            cromulons.forEach(c => drawCromulon(c));
+        }
 
         // Рисуем игрока (с миганием при неуязвимости)
         if (gameState === STATE.PLAYING && invincible && Math.floor(Date.now() / 150) % 2 === 0) {
             // не рисуем
+        } else if (gameState !== STATE.WIN) {
+            drawCruiser();
         } else {
+            // При победе тоже рисуем тарелку (для красоты)
             drawCruiser();
         }
 
@@ -548,7 +544,7 @@
             ctx.fillText('❤️', W - 30 - i * 30, 40);
         }
 
-        // ---- Game Over ----
+        // ---- Экраны GAMEOVER и WIN ----
         if (gameState === STATE.GAMEOVER) {
             ctx.fillStyle = 'rgba(0,0,0,0.7)';
             ctx.fillRect(0, 0, W, H);
@@ -569,16 +565,38 @@
             ctx.fillText('Tap anywhere to retry', W/2, 500);
             ctx.shadowBlur = 0;
             ctx.textAlign = 'left';
-        } else {
-            ctx.textAlign = 'right';
-            ctx.fillStyle = 'rgba(255,255,255,0.4)';
-            ctx.font = '12px Arial';
-            ctx.fillText('Tap to jump', W-15, H-15);
+        }
+
+        if (gameState === STATE.WIN) {
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(0, 0, W, H);
+            ctx.textAlign = 'center';
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = '#ffdd00';
+            ctx.fillStyle = '#ffdd00';
+            ctx.font = 'bold 48px "Arial Black", sans-serif';
+            ctx.fillText('🏆 VICTORY!', W/2, 200);
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 28px "Arial Black", sans-serif';
+            ctx.fillText('Ты убежал!', W/2, 260);
+            ctx.fillStyle = '#88ff88';
+            ctx.font = 'bold 22px "Arial", sans-serif';
+            ctx.fillText('Бонусный флаг:', W/2, 310);
+            ctx.fillStyle = '#ffffaa';
+            ctx.font = 'italic 26px "Comic Sans MS", cursive, sans-serif';
+            ctx.fillText('Easy peasy lemon squeezy', W/2, 360);
+            ctx.fillStyle = '#aaaaaa';
+            ctx.font = '16px Arial';
+            ctx.fillText('Tap anywhere to continue', W/2, 500);
+            ctx.shadowBlur = 0;
             ctx.textAlign = 'left';
         }
     }
 
-    // ---- Полифилл roundRect ----
+    // ============================================================
+    // Полифилл roundRect
+    // ============================================================
     if (!CanvasRenderingContext2D.prototype.roundRect) {
         CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
             if (r > w/2) r = w/2;
@@ -614,7 +632,8 @@
             }
         } else if (gameState === STATE.PLAYING) {
             cruiser.velocityY = cruiser.jump;
-        } else if (gameState === STATE.GAMEOVER) {
+        } else if (gameState === STATE.GAMEOVER || gameState === STATE.WIN) {
+            // При нажатии на GAMEOVER или WIN возвращаемся в меню
             gameState = STATE.MENU;
         }
     }
