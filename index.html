@@ -331,7 +331,7 @@
     function spawnCromulon() {
         const maxY = H - 80;
         // Скорость зависит от счёта: каждые 100 очков +0.5 к базе
-        const speedBonus = Math.floor(score / 100) * 0.5;
+        const speedBonus = Math.floor(score / 100) * 0.35;
         const baseSpeed = 3.5 + Math.random() * 1.5;
         cromulons.push({
             x: W + 30,
