@@ -21,7 +21,6 @@
             max-height: 100%;
             touch-action: none;
         }
-        /* Модальное окно для ввода NTLM-хэша */
         #hashModal {
             display: none;
             position: fixed;
@@ -80,7 +79,6 @@
 <body>
 <canvas id="gameCanvas" width="400" height="600"></canvas>
 
-<!-- Модальное окно -->
 <div id="hashModal">
     <div class="modal-box">
         <h2>🏆 VICTORY!</h2>
@@ -109,13 +107,24 @@
         const W = canvas.width, H = canvas.height;
 
         // ============================================================
-        // Состояния
+        // Состояния и настройки
         // ============================================================
         const S_MENU = 101, S_PLAY = 202, S_OVER = 303, S_WIN = 404;
         const WIN_SCORE = 1000;
-        const BUFF_DURATION = 6000;        // 6 секунд
         const LASER_FIRE_INTERVAL = 1200;  // 1.2 сек
         const MG_FIRE_INTERVAL = 200;      // 0.2 сек
+        const ROCKET_FIRE_INTERVAL = 1000; // 1 сек
+
+        // Длительности бафов
+        const BUFF_DURATIONS = {
+            shield: 4000,       // 4 секунды
+            rocket: 6000,       // 6 секунд
+            laser: 6000,        // 6 секунд
+            machinegun: 7000    // 7 секунд
+        };
+
+        // HP головы
+        const CROMULON_HP = 2;
 
         let gameState = S_MENU;
         let score = 0;
@@ -124,18 +133,17 @@
         let invincible = false, invincibleTimer = 0;
         let frameCount = 0;
 
-        // Бафы
+        // Бафы — все могут быть активны одновременно
         let shieldActive = false, shieldTimer = 0;
-        let weaponType = null;   // null | 'rocket' | 'laser' | 'machinegun'
-        let weaponTimer = 0;
-        let nextShotTime = 0;
+        let weaponTimers = { rocket: 0, laser: 0, machinegun: 0 };
+        let nextShotTimes = { rocket: 0, laser: 0, machinegun: 0 };
 
-        // Свечение тарелки
+        // Свечение
         let thrustTimer = 0;
 
-        // Счётчик для спавна бафов
+        // Счётчик спавна
         let cromulonsPassed = 0;
-        let nextBuffAt = 4 + Math.floor(Math.random() * 3); // 4-6
+        let nextBuffAt = 4 + Math.floor(Math.random() * 3);
 
         // ============================================================
         // Игрок
@@ -178,7 +186,7 @@
         }
 
         // ============================================================
-        // Работа с сервером (проверка хэша)
+        // Работа с сервером
         // ============================================================
         async function verifyHashOnServer(userHash) {
             try {
@@ -187,8 +195,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ hash: userHash }),
                 });
-                const data = await response.json();
-                return data;
+                return await response.json();
             } catch (e) {
                 console.error('Fetch error:', e);
                 return { error: 'Network error' };
@@ -303,7 +310,7 @@
         }
 
         // ============================================================
-        // Спавн объектов
+        // Спавн
         // ============================================================
         function spawnCromulon() {
             const maxY = H - 80;
@@ -315,7 +322,7 @@
                 width: 60, height: 80,
                 speed: baseSpeed + speedBonus,
                 scored: false,
-                hp: 3,
+                hp: CROMULON_HP,
                 hitFlash: 0
             });
         }
@@ -334,14 +341,42 @@
             });
         }
 
-        function spawnPowerup() {
-            const types = ['shield', 'rocket', 'laser', 'machinegun'];
-            const type = types[Math.floor(Math.random() * types.length)];
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        // Спавн двух разных бафов, не рядом друг с другом
+        function spawnPowerupPair() {
+            const types = shuffleArray(['shield', 'rocket', 'laser', 'machinegun']);
+            const type1 = types[0];
+            const type2 = types[1];
+
+            const y1 = 100 + Math.random() * (H - 220);
+            let y2;
+            let attempts = 0;
+            do {
+                y2 = 100 + Math.random() * (H - 220);
+                attempts++;
+            } while (Math.abs(y2 - y1) < 150 && attempts < 20);
+
+            // Второй спавним чуть дальше, чтобы не прилетели одновременно
             powerups.push({
                 x: W + 80,
-                y: 100 + Math.random() * (H - 220),
+                y: y1,
                 radius: 26,
-                type: type,
+                type: type1,
+                angle: 0,
+                speed: 2.2
+            });
+            powerups.push({
+                x: W + 220,
+                y: y2,
+                radius: 26,
+                type: type2,
                 angle: 0,
                 speed: 2.2
             });
@@ -381,48 +416,42 @@
             });
         }
 
-function fireLaser() {
-    const startX = cruiser.x + cruiser.width;
-    const startY = cruiser.y + cruiser.height / 2;
-    const endX = W;
-    const halfWidthEnd = 30; // 60px на конце = ширина головы
+        function fireLaser() {
+            const startX = cruiser.x + cruiser.width;
+            const startY = cruiser.y + cruiser.height / 2;
+            const endX = W;
+            const halfWidthEnd = 34;
+            const halfWidthStart = 6;
 
-    for (let i = cromulons.length - 1; i >= 0; i--) {
-        const c = cromulons[i];
-
-        // Проверяем 5 точек головы: 4 угла + центр
-        const points = [
-            { x: c.x,                    y: c.y },
-            { x: c.x + c.width,          y: c.y },
-            { x: c.x,                    y: c.y + c.height },
-            { x: c.x + c.width,          y: c.y + c.height },
-            { x: c.x + c.width / 2,      y: c.y + c.height / 2 }
-        ];
-
-        let hit = false;
-        for (const p of points) {
-            if (p.x < startX) continue; // точки левее дула — вне конуса
-            const t = Math.min((p.x - startX) / (endX - startX), 1);
-            const halfW = halfWidthEnd * t;
-            if (Math.abs(p.y - startY) <= halfW) {
-                hit = true;
-                break;
+            for (let i = cromulons.length - 1; i >= 0; i--) {
+                const c = cromulons[i];
+                const points = [
+                    { x: c.x,                y: c.y },
+                    { x: c.x + c.width,      y: c.y },
+                    { x: c.x,                y: c.y + c.height },
+                    { x: c.x + c.width,      y: c.y + c.height },
+                    { x: c.x + c.width / 2,  y: c.y + c.height / 2 }
+                ];
+                let hit = false;
+                for (const p of points) {
+                    if (p.x < startX) continue;
+                    const t = Math.min((p.x - startX) / (endX - startX), 1);
+                    const halfW = halfWidthStart + (halfWidthEnd - halfWidthStart) * t;
+                    if (Math.abs(p.y - startY) <= halfW) { hit = true; break; }
+                }
+                if (hit) {
+                    const ex = c.x + c.width / 2;
+                    const ey = c.y + c.height / 2;
+                    createExplosion(ex, ey);
+                    if (!c.scored) {
+                        c.scored = true;
+                        addScore(10);
+                    }
+                    cromulons.splice(i, 1);
+                }
             }
+            laserBeams.push({ startX, startY, endX, halfWidthEnd, halfWidthStart, life: 1.0 });
         }
-
-        if (hit) {
-            const ex = c.x + c.width / 2;
-            const ey = c.y + c.height / 2;
-            createExplosion(ex, ey);
-            if (!c.scored) {
-                c.scored = true;
-                addScore(10);
-            }
-            cromulons.splice(i, 1);
-        }
-    }
-    laserBeams.push({ startX, startY, endX, halfWidthEnd, life: 1.0 });
-}
 
         // ============================================================
         // Эффекты
@@ -449,30 +478,48 @@ function fireLaser() {
                     x: x, y: y,
                     vx: (Math.random() - 0.5) * 5,
                     vy: (Math.random() - 0.5) * 5,
-                    size: 2,
-                    life: 0.6,
+                    size: 2, life: 0.6,
                     color: '#ffff00'
                 });
             }
         }
 
         // ============================================================
-        // Рисование: тарелка со свечением
+        // Рисование тарелки с неоново-голубым свечением снизу
         // ============================================================
         function drawCruiser() {
             const x = cruiser.x, y = cruiser.y, w = cruiser.width, h = cruiser.height;
             const cx = x + w / 2, cy = y + h / 2;
 
-            // Свечение под тарелкой (сначала, чтобы было под корпусом)
-            const glowIntensity = thrustTimer > 0 ? 1.0 : 0.35;
-            const glowRadius = thrustTimer > 0 ? 26 : 14;
-            const grad = ctx.createRadialGradient(cx, y + h + 6, 0, cx, y + h + 6, glowRadius);
-            grad.addColorStop(0, `rgba(0, 255, 180, ${0.75 * glowIntensity})`);
-            grad.addColorStop(0.5, `rgba(0, 220, 255, ${0.3 * glowIntensity})`);
-            grad.addColorStop(1, 'rgba(0, 220, 255, 0)');
+            // Неоново-голубое свечение под тарелкой
+            const glowIntensity = thrustTimer > 0 ? 1.0 : 0.45;
+            const glowRadius = thrustTimer > 0 ? 42 : 26;
+            const glowCenterY = y + h + 4;
+
+            // Внешнее широкое свечение
+            const grad = ctx.createRadialGradient(cx, glowCenterY, 0, cx, glowCenterY, glowRadius);
+            grad.addColorStop(0, `rgba(0, 240, 255, ${0.9 * glowIntensity})`);
+            grad.addColorStop(0.3, `rgba(0, 200, 255, ${0.6 * glowIntensity})`);
+            grad.addColorStop(0.6, `rgba(0, 150, 255, ${0.25 * glowIntensity})`);
+            grad.addColorStop(1, 'rgba(0, 150, 255, 0)');
             ctx.fillStyle = grad;
+            // Рисуем эллипс — растянут по горизонтали, больше снизу
+            ctx.save();
+            ctx.translate(cx, glowCenterY);
+            ctx.scale(1.6, 1.0);
             ctx.beginPath();
-            ctx.arc(cx, y + h + 6, glowRadius, 0, Math.PI * 2);
+            ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Дополнительное яркое ядро ближе к корпусу
+            const coreGrad = ctx.createRadialGradient(cx, y + h, 0, cx, y + h, glowRadius * 0.5);
+            coreGrad.addColorStop(0, `rgba(180, 250, 255, ${0.9 * glowIntensity})`);
+            coreGrad.addColorStop(0.5, `rgba(0, 220, 255, ${0.4 * glowIntensity})`);
+            coreGrad.addColorStop(1, 'rgba(0, 180, 255, 0)');
+            ctx.fillStyle = coreGrad;
+            ctx.beginPath();
+            ctx.arc(cx, y + h, glowRadius * 0.5, 0, Math.PI * 2);
             ctx.fill();
 
             ctx.save();
@@ -480,7 +527,7 @@ function fireLaser() {
             ctx.rotate(cruiser.tilt);
             ctx.translate(-cx, -cy);
 
-            ctx.shadowColor = '#00ff88';
+            ctx.shadowColor = '#00ffff';
             ctx.shadowBlur = 25;
 
             ctx.beginPath();
@@ -576,8 +623,7 @@ function fireLaser() {
             ctx.shadowColor = '#ff0055';
             ctx.shadowBlur = 15;
 
-            // Цвет зависит от урона
-            const baseColor = c.hitFlash > 0 ? '#ff9999' : (c.hp === 2 ? '#d95535' : c.hp === 1 ? '#c84a2a' : '#e06040');
+            const baseColor = c.hitFlash > 0 ? '#ff9999' : (c.hp === 1 ? '#c84a2a' : '#e06040');
 
             ctx.beginPath();
             ctx.ellipse(cx, cy, w / 2, h / 2, 0, 0, Math.PI * 2);
@@ -625,12 +671,12 @@ function fireLaser() {
                 ctx.fill();
             }
 
-            // Индикатор HP (если повреждён)
-            if (c.hp < 3) {
+            // Индикатор HP — две точки
+            if (c.hp < CROMULON_HP) {
                 ctx.shadowBlur = 0;
-                for (let i = 0; i < 3; i++) {
+                for (let i = 0; i < CROMULON_HP; i++) {
                     ctx.beginPath();
-                    ctx.arc(cx - 10 + i * 10, cy + h / 2 + 8, 3, 0, Math.PI * 2);
+                    ctx.arc(cx - 5 + i * 10, cy + h / 2 + 8, 3, 0, Math.PI * 2);
                     ctx.fillStyle = i < c.hp ? '#00ff88' : 'rgba(255,255,255,0.2)';
                     ctx.fill();
                 }
@@ -686,13 +732,12 @@ function fireLaser() {
         }
 
         // ============================================================
-        // Рисование бафов
+        // Бафы
         // ============================================================
         function drawPowerup(p) {
             ctx.save();
             ctx.translate(p.x, p.y);
 
-            // Пульсирующий ореол
             const pulse = 1 + Math.sin(Date.now() / 150 + p.x) * 0.1;
             const auraColor = p.type === 'shield' ? 'rgba(0, 170, 255, 0.15)'
                 : p.type === 'rocket' ? 'rgba(255, 200, 0, 0.15)'
@@ -703,7 +748,6 @@ function fireLaser() {
             ctx.fillStyle = auraColor;
             ctx.fill();
 
-            // Белый круг
             ctx.beginPath();
             ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
@@ -766,46 +810,36 @@ function fireLaser() {
                 ctx.fillRect(-10, -3, 4, 6);
                 ctx.fillRect(0, -3, 4, 6);
             } else if (p.type === 'laser') {
-                // Зелёная мигающая полоска в кружке
                 ctx.shadowColor = '#00ff66';
                 ctx.shadowBlur = 25;
-                // Корпус
                 ctx.fillStyle = '#2a2a2a';
                 ctx.fillRect(-14, -6, 24, 12);
                 ctx.strokeStyle = '#555555';
                 ctx.lineWidth = 1.5;
                 ctx.strokeRect(-14, -6, 24, 12);
-                // Излучатель
                 ctx.fillStyle = '#666666';
                 ctx.fillRect(10, -8, 5, 16);
-                // Мигающая зелёная полоса
                 const blink = 0.5 + 0.5 * Math.sin(Date.now() / 80);
                 ctx.fillStyle = `rgba(0, 255, 100, ${blink})`;
                 ctx.fillRect(-10, -3, 20, 6);
                 ctx.fillStyle = `rgba(200, 255, 200, ${blink})`;
                 ctx.fillRect(-10, -1, 20, 2);
             } else if (p.type === 'machinegun') {
-                // Пулемёт
                 ctx.shadowColor = '#ff5544';
                 ctx.shadowBlur = 20;
-                // Ствол
                 ctx.fillStyle = '#555555';
                 ctx.fillRect(-6, -3, 22, 6);
                 ctx.strokeStyle = '#333333';
                 ctx.lineWidth = 1;
                 ctx.strokeRect(-6, -3, 22, 6);
-                // Корпус
                 ctx.fillStyle = '#4a4a4a';
                 ctx.fillRect(-14, -8, 14, 16);
                 ctx.strokeStyle = '#2a2a2a';
                 ctx.strokeRect(-14, -8, 14, 16);
-                // Магазин
                 ctx.fillStyle = '#8b4513';
                 ctx.fillRect(-12, 8, 8, 8);
-                // Дульный срез
                 ctx.fillStyle = '#ff3333';
                 ctx.fillRect(14, -3, 3, 6);
-                // Вспышка
                 const mgBlink = Math.sin(Date.now() / 60) > 0 ? 0.9 : 0.4;
                 ctx.fillStyle = `rgba(255, 200, 100, ${mgBlink})`;
                 ctx.fillRect(-4, -1, 4, 2);
@@ -816,7 +850,7 @@ function fireLaser() {
         }
 
         // ============================================================
-        // Ракеты, пули, лазер
+        // Снаряды
         // ============================================================
         function drawRocket(r) {
             ctx.save();
@@ -862,7 +896,7 @@ function fireLaser() {
         }
 
         function drawLaserBeam(lb) {
-            const { startX, startY, endX, halfWidthEnd, life } = lb;
+            const { startX, startY, endX, halfWidthEnd, halfWidthStart, life } = lb;
             ctx.save();
             ctx.globalAlpha = life;
             const grad = ctx.createLinearGradient(startX, 0, endX, 0);
@@ -871,12 +905,12 @@ function fireLaser() {
             grad.addColorStop(1, 'rgba(0, 255, 100, 0.1)');
             ctx.fillStyle = grad;
             ctx.beginPath();
-            ctx.moveTo(startX, startY);
+            ctx.moveTo(startX, startY - halfWidthStart);
             ctx.lineTo(endX, startY - halfWidthEnd);
             ctx.lineTo(endX, startY + halfWidthEnd);
+            ctx.lineTo(startX, startY + halfWidthStart);
             ctx.closePath();
             ctx.fill();
-            // Яркое ядро
             ctx.shadowColor = '#00ff66';
             ctx.shadowBlur = 25;
             ctx.strokeStyle = `rgba(220, 255, 220, ${life})`;
@@ -891,7 +925,7 @@ function fireLaser() {
         }
 
         // ============================================================
-        // Взрывы, обломки, вспышки
+        // Эффекты
         // ============================================================
         function drawExplosion(e) {
             const alpha = e.life;
@@ -932,7 +966,7 @@ function fireLaser() {
         }
 
         // ============================================================
-        // HUD иконки бафов
+        // HUD иконки
         // ============================================================
         function drawBuffIcon(x, y, type, fraction) {
             ctx.save();
@@ -1033,7 +1067,8 @@ function fireLaser() {
             lastSpawnMeteor = Date.now();
             invincible = false; invincibleTimer = 0;
             shieldActive = false; shieldTimer = 0;
-            weaponType = null; weaponTimer = 0;
+            weaponTimers = { rocket: 0, laser: 0, machinegun: 0 };
+            nextShotTimes = { rocket: 0, laser: 0, machinegun: 0 };
             thrustTimer = 0;
             cromulonsPassed = 0;
             nextBuffAt = 4 + Math.floor(Math.random() * 3);
@@ -1052,7 +1087,7 @@ function fireLaser() {
                 cromulons = [];
                 meteors = [];
                 shieldActive = false;
-                weaponType = null;
+                weaponTimers = { rocket: 0, laser: 0, machinegun: 0 };
                 rockets = [];
                 bullets = [];
             }
@@ -1069,10 +1104,8 @@ function fireLaser() {
             }
 
             if (gameState === S_PLAY) {
-                // Свечение
                 if (thrustTimer > 0) thrustTimer -= 16;
 
-                // Физика
                 cruiser.velocityY += cruiser.gravity;
                 cruiser.y += cruiser.velocityY;
                 if (cruiser.y < 0) { cruiser.y = 0; cruiser.velocityY = 0; }
@@ -1092,7 +1125,7 @@ function fireLaser() {
                     lastSpawnMeteor = now;
                 }
 
-                // Кромулоны
+                // Головы
                 for (let i = cromulons.length - 1; i >= 0; i--) {
                     const c = cromulons[i];
                     c.x -= c.speed;
@@ -1104,7 +1137,7 @@ function fireLaser() {
                         if (gameState !== S_PLAY) return;
                         cromulonsPassed++;
                         if (cromulonsPassed >= nextBuffAt) {
-                            spawnPowerup();
+                            spawnPowerupPair();
                             cromulonsPassed = 0;
                             nextBuffAt = 4 + Math.floor(Math.random() * 3);
                         }
@@ -1154,11 +1187,10 @@ function fireLaser() {
                     if (dist < pickupRadius) {
                         if (p.type === 'shield') {
                             shieldActive = true;
-                            shieldTimer = BUFF_DURATION;
+                            shieldTimer = BUFF_DURATIONS.shield;
                         } else {
-                            weaponType = p.type;
-                            weaponTimer = BUFF_DURATION;
-                            nextShotTime = now;
+                            weaponTimers[p.type] = BUFF_DURATIONS[p.type];
+                            nextShotTimes[p.type] = now;
                         }
                         const flashColor = p.type === 'shield' ? '#00ccff'
                             : p.type === 'rocket' ? '#ffcc00'
@@ -1180,26 +1212,28 @@ function fireLaser() {
                     shieldTimer -= 16;
                     if (shieldTimer <= 0) { shieldActive = false; shieldTimer = 0; }
                 }
-                if (weaponType) {
-                    weaponTimer -= 16;
-                    if (weaponTimer <= 0) {
-                        weaponType = null;
-                        weaponTimer = 0;
-                    } else if (now >= nextShotTime) {
-                        if (weaponType === 'rocket') {
-                            const target = findNearestCromulon();
-                            if (target) {
-                                fireRocket(target);
-                                nextShotTime = now + 1000;
-                            } else {
-                                nextShotTime = now + 200;
+
+                for (const type of ['rocket', 'laser', 'machinegun']) {
+                    if (weaponTimers[type] > 0) {
+                        weaponTimers[type] -= 16;
+                        if (weaponTimers[type] <= 0) {
+                            weaponTimers[type] = 0;
+                        } else if (now >= nextShotTimes[type]) {
+                            if (type === 'rocket') {
+                                const target = findNearestCromulon();
+                                if (target) {
+                                    fireRocket(target);
+                                    nextShotTimes[type] = now + ROCKET_FIRE_INTERVAL;
+                                } else {
+                                    nextShotTimes[type] = now + 200;
+                                }
+                            } else if (type === 'laser') {
+                                fireLaser();
+                                nextShotTimes[type] = now + LASER_FIRE_INTERVAL;
+                            } else if (type === 'machinegun') {
+                                fireBullet();
+                                nextShotTimes[type] = now + MG_FIRE_INTERVAL;
                             }
-                        } else if (weaponType === 'laser') {
-                            fireLaser();
-                            nextShotTime = now + LASER_FIRE_INTERVAL;
-                        } else if (weaponType === 'machinegun') {
-                            fireBullet();
-                            nextShotTime = now + MG_FIRE_INTERVAL;
                         }
                     }
                 }
@@ -1233,18 +1267,22 @@ function fireLaser() {
                     }
                 }
 
-                // Пули
+                // Пули — проверка по всему боксу головы
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     const b = bullets[i];
                     b.x += b.vx;
                     b.y += b.vy;
 
+                    // BBox пули: [b.x-6, b.x+4] по X; [b.y-2, b.y+2] по Y
+                    const bx1 = b.x - 6, bx2 = b.x + 4;
+                    const by1 = b.y - 2, by2 = b.y + 2;
+
                     let hit = false;
                     for (let j = cromulons.length - 1; j >= 0; j--) {
                         const c = cromulons[j];
-                        if (b.x > c.x && b.x < c.x + c.width &&
-                            b.y > c.y && b.y < c.y + c.height) {
-                            c.hp = (c.hp || 3) - 1;
+                        if (bx1 < c.x + c.width && bx2 > c.x &&
+                            by1 < c.y + c.height && by2 > c.y) {
+                            c.hp -= 1;
                             c.hitFlash = 4;
                             createHitSpark(b.x, b.y);
                             hit = true;
@@ -1273,7 +1311,6 @@ function fireLaser() {
                     if (laserBeams[i].life <= 0) laserBeams.splice(i, 1);
                 }
 
-                // Неуязвимость
                 if (invincible) {
                     invincibleTimer -= 16;
                     if (invincibleTimer <= 0) {
@@ -1321,18 +1358,10 @@ function fireLaser() {
             meteors.forEach(m => drawMeteor(m));
             cromulons.forEach(c => drawCromulon(c));
 
-            if (gameState === S_PLAY) {
-                powerups.forEach(p => drawPowerup(p));
-                rockets.forEach(r => drawRocket(r));
-                bullets.forEach(b => drawBullet(b));
-                laserBeams.forEach(lb => drawLaserBeam(lb));
-            } else {
-                // при победе/поражении тоже показываем застывшие объекты
-                powerups.forEach(p => drawPowerup(p));
-                rockets.forEach(r => drawRocket(r));
-                bullets.forEach(b => drawBullet(b));
-                laserBeams.forEach(lb => drawLaserBeam(lb));
-            }
+            powerups.forEach(p => drawPowerup(p));
+            rockets.forEach(r => drawRocket(r));
+            bullets.forEach(b => drawBullet(b));
+            laserBeams.forEach(lb => drawLaserBeam(lb));
 
             if (gameState !== S_WIN) {
                 if (shieldActive) drawShieldAroundPlayer();
@@ -1404,11 +1433,14 @@ function fireLaser() {
 
             let iconY = 85;
             if (shieldActive) {
-                drawBuffIcon(15, iconY, 'shield', shieldTimer / BUFF_DURATION);
+                drawBuffIcon(15, iconY, 'shield', shieldTimer / BUFF_DURATIONS.shield);
                 iconY += 32;
             }
-            if (weaponType) {
-                drawBuffIcon(15, iconY, weaponType, weaponTimer / BUFF_DURATION);
+            for (const type of ['rocket', 'laser', 'machinegun']) {
+                if (weaponTimers[type] > 0) {
+                    drawBuffIcon(15, iconY, type, weaponTimers[type] / BUFF_DURATIONS[type]);
+                    iconY += 32;
+                }
             }
             ctx.shadowBlur = 0;
 
@@ -1436,7 +1468,6 @@ function fireLaser() {
             }
         }
 
-        // Полифилл roundRect
         if (!CanvasRenderingContext2D.prototype.roundRect) {
             CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
                 if (r > w / 2) r = w / 2;
@@ -1470,11 +1501,10 @@ function fireLaser() {
                 if (touchX >= 80 && touchX <= 320 && touchY >= 390 && touchY <= 450) resetGame();
             } else if (gameState === S_PLAY) {
                 cruiser.velocityY = cruiser.jump;
-                thrustTimer = 300; // усиленное свечение на 300мс
+                thrustTimer = 300;
             } else if (gameState === S_OVER) {
                 gameState = S_MENU;
             }
-            // S_WIN — клики игнорируются, работает только модал
         }
 
         canvas.addEventListener('pointerdown', handlePointer);
