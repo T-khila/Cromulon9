@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Get Schwifty - Cromulon Attack</title>
+    <title>Get Schwifty</title>
     <script src="https://telegram.org"></script>
     <style>
         html, body {
@@ -106,48 +106,38 @@
         const ctx = canvas.getContext("2d");
         const W = canvas.width, H = canvas.height;
 
-        // ============================================================
-        // Состояния и настройки
-        // ============================================================
         const S_MENU = 101, S_PLAY = 202, S_OVER = 303, S_WIN = 404;
         const WIN_SCORE = 1000;
-        const LASER_FIRE_INTERVAL = 1200;  // 1.2 сек
-        const MG_FIRE_INTERVAL = 200;      // 0.2 сек
-        const ROCKET_FIRE_INTERVAL = 1000; // 1 сек
+        const LASER_FIRE_INTERVAL = 1200;
+        const MG_FIRE_INTERVAL = 200;
+        const ROCKET_FIRE_INTERVAL = 1000;
 
-        // Длительности бафов
         const BUFF_DURATIONS = {
-            shield: 4000,       // 4 секунды
-            rocket: 6000,       // 6 секунд
-            laser: 6000,        // 6 секунд
-            machinegun: 7000    // 7 секунд
+            shield: 4000,
+            rocket: 6000,
+            laser: 6000,
+            machinegun: 7000
         };
 
-        // HP головы
         const CROMULON_HP = 2;
 
         let gameState = S_MENU;
+        let gameMode = 'flag';
         let score = 0;
         let lives = 3;
         let highScore = parseInt(localStorage.getItem('schwiftyHighScore')) || 0;
         let invincible = false, invincibleTimer = 0;
         let frameCount = 0;
 
-        // Бафы — все могут быть активны одновременно
         let shieldActive = false, shieldTimer = 0;
         let weaponTimers = { rocket: 0, laser: 0, machinegun: 0 };
         let nextShotTimes = { rocket: 0, laser: 0, machinegun: 0 };
 
-        // Свечение
         let thrustTimer = 0;
 
-        // Счётчик спавна
         let cromulonsPassed = 0;
         let nextBuffAt = 4 + Math.floor(Math.random() * 3);
 
-        // ============================================================
-        // Игрок
-        // ============================================================
         const cruiser = {
             x: 80, y: 250,
             width: 50, height: 30,
@@ -157,9 +147,6 @@
             tilt: 0
         };
 
-        // ============================================================
-        // Массивы
-        // ============================================================
         let cromulons = [];
         let meteors = [];
         let powerups = [];
@@ -185,9 +172,6 @@
             });
         }
 
-        // ============================================================
-        // Работа с сервером
-        // ============================================================
         async function verifyHashOnServer(userHash) {
             try {
                 const response = await fetch(WORKER_URL, {
@@ -197,14 +181,10 @@
                 });
                 return await response.json();
             } catch (e) {
-                console.error('Fetch error:', e);
                 return { error: 'Network error' };
             }
         }
 
-        // ============================================================
-        // Модальное окно
-        // ============================================================
         const hashModal = document.getElementById('hashModal');
         const hashInput = document.getElementById('hashInput');
         const hashError = document.getElementById('hashError');
@@ -294,24 +274,18 @@
             }
         });
 
-        // ============================================================
-        // Очки + победа
-        // ============================================================
         function addScore(amount) {
             score += amount;
             if (score > highScore) {
                 highScore = score;
                 localStorage.setItem('schwiftyHighScore', highScore);
             }
-            if (score >= WIN_SCORE && gameState === S_PLAY) {
+            if (score >= WIN_SCORE && gameState === S_PLAY && gameMode === 'flag') {
                 gameState = S_WIN;
                 showHashModal();
             }
         }
 
-        // ============================================================
-        // Спавн
-        // ============================================================
         function spawnCromulon() {
             const maxY = H - 80;
             const speedBonus = Math.floor(score / 100) * 0.5;
@@ -349,7 +323,6 @@
             return arr;
         }
 
-        // Спавн двух разных бафов, не рядом друг с другом
         function spawnPowerupPair() {
             const types = shuffleArray(['shield', 'rocket', 'laser', 'machinegun']);
             const type1 = types[0];
@@ -363,7 +336,6 @@
                 attempts++;
             } while (Math.abs(y2 - y1) < 150 && attempts < 20);
 
-            // Второй спавним чуть дальше, чтобы не прилетели одновременно
             powerups.push({
                 x: W + 80,
                 y: y1,
@@ -382,9 +354,6 @@
             });
         }
 
-        // ============================================================
-        // Оружие
-        // ============================================================
         function findNearestCromulon() {
             let target = null, minDist = Infinity;
             const px = cruiser.x + cruiser.width / 2;
@@ -453,9 +422,6 @@
             laserBeams.push({ startX, startY, endX, halfWidthEnd, halfWidthStart, life: 1.0 });
         }
 
-        // ============================================================
-        // Эффекты
-        // ============================================================
         function createExplosion(x, y) {
             explosions.push({ x: x, y: y, radius: 5, maxRadius: 55, life: 1.0 });
             for (let i = 0; i < 9; i++) {
@@ -484,26 +450,20 @@
             }
         }
 
-        // ============================================================
-        // Рисование тарелки с неоново-голубым свечением снизу
-        // ============================================================
         function drawCruiser() {
             const x = cruiser.x, y = cruiser.y, w = cruiser.width, h = cruiser.height;
             const cx = x + w / 2, cy = y + h / 2;
 
-            // Неоново-голубое свечение под тарелкой
             const glowIntensity = thrustTimer > 0 ? 1.0 : 0.45;
             const glowRadius = thrustTimer > 0 ? 42 : 26;
             const glowCenterY = y + h + 4;
 
-            // Внешнее широкое свечение
             const grad = ctx.createRadialGradient(cx, glowCenterY, 0, cx, glowCenterY, glowRadius);
             grad.addColorStop(0, `rgba(0, 240, 255, ${0.9 * glowIntensity})`);
             grad.addColorStop(0.3, `rgba(0, 200, 255, ${0.6 * glowIntensity})`);
             grad.addColorStop(0.6, `rgba(0, 150, 255, ${0.25 * glowIntensity})`);
             grad.addColorStop(1, 'rgba(0, 150, 255, 0)');
             ctx.fillStyle = grad;
-            // Рисуем эллипс — растянут по горизонтали, больше снизу
             ctx.save();
             ctx.translate(cx, glowCenterY);
             ctx.scale(1.6, 1.0);
@@ -512,7 +472,6 @@
             ctx.fill();
             ctx.restore();
 
-            // Дополнительное яркое ядро ближе к корпусу
             const coreGrad = ctx.createRadialGradient(cx, y + h, 0, cx, y + h, glowRadius * 0.5);
             coreGrad.addColorStop(0, `rgba(180, 250, 255, ${0.9 * glowIntensity})`);
             coreGrad.addColorStop(0.5, `rgba(0, 220, 255, ${0.4 * glowIntensity})`);
@@ -671,7 +630,6 @@
                 ctx.fill();
             }
 
-            // Индикатор HP — две точки
             if (c.hp < CROMULON_HP) {
                 ctx.shadowBlur = 0;
                 for (let i = 0; i < CROMULON_HP; i++) {
@@ -731,9 +689,6 @@
             ctx.restore();
         }
 
-        // ============================================================
-        // Бафы
-        // ============================================================
         function drawPowerup(p) {
             ctx.save();
             ctx.translate(p.x, p.y);
@@ -849,9 +804,6 @@
             ctx.shadowBlur = 0;
         }
 
-        // ============================================================
-        // Снаряды
-        // ============================================================
         function drawRocket(r) {
             ctx.save();
             ctx.translate(r.x, r.y);
@@ -924,9 +876,6 @@
             ctx.shadowBlur = 0;
         }
 
-        // ============================================================
-        // Эффекты
-        // ============================================================
         function drawExplosion(e) {
             const alpha = e.life;
             const grad = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.radius);
@@ -965,9 +914,6 @@
             ctx.globalAlpha = 1;
         }
 
-        // ============================================================
-        // HUD иконки
-        // ============================================================
         function drawBuffIcon(x, y, type, fraction) {
             ctx.save();
             ctx.beginPath();
@@ -1019,9 +965,6 @@
             ctx.restore();
         }
 
-        // ============================================================
-        // Фон
-        // ============================================================
         function drawBackground() {
             const grad = ctx.createLinearGradient(0, 0, 0, H);
             grad.addColorStop(0, '#0b001a');
@@ -1052,9 +995,6 @@
             ctx.globalAlpha = 1.0;
         }
 
-        // ============================================================
-        // Логика
-        // ============================================================
         function resetGame() {
             score = 0;
             lives = 3;
@@ -1115,7 +1055,6 @@
                 }
                 cruiser.tilt = cruiser.velocityY * 0.03;
 
-                // Спавн
                 if (now - lastSpawnCromulon > CROMULON_DELAY) {
                     spawnCromulon();
                     lastSpawnCromulon = now;
@@ -1125,7 +1064,6 @@
                     lastSpawnMeteor = now;
                 }
 
-                // Головы
                 for (let i = cromulons.length - 1; i >= 0; i--) {
                     const c = cromulons[i];
                     c.x -= c.speed;
@@ -1163,7 +1101,6 @@
                     if (c.x < -100) cromulons.splice(i, 1);
                 }
 
-                // Метеориты
                 for (let i = meteors.length - 1; i >= 0; i--) {
                     const m = meteors[i];
                     m.x += m.speedX;
@@ -1173,7 +1110,6 @@
                     }
                 }
 
-                // Бафы
                 for (let i = powerups.length - 1; i >= 0; i--) {
                     const p = powerups[i];
                     p.x -= p.speed;
@@ -1207,7 +1143,6 @@
                     }
                 }
 
-                // Таймеры бафов
                 if (shieldActive) {
                     shieldTimer -= 16;
                     if (shieldTimer <= 0) { shieldActive = false; shieldTimer = 0; }
@@ -1238,7 +1173,6 @@
                     }
                 }
 
-                // Ракеты
                 for (let i = rockets.length - 1; i >= 0; i--) {
                     const r = rockets[i];
                     if (!cromulons.includes(r.target)) {
@@ -1267,13 +1201,11 @@
                     }
                 }
 
-                // Пули — проверка по всему боксу головы
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     const b = bullets[i];
                     b.x += b.vx;
                     b.y += b.vy;
 
-                    // BBox пули: [b.x-6, b.x+4] по X; [b.y-2, b.y+2] по Y
                     const bx1 = b.x - 6, bx2 = b.x + 4;
                     const by1 = b.y - 2, by2 = b.y + 2;
 
@@ -1305,7 +1237,6 @@
                     }
                 }
 
-                // Лазерные лучи
                 for (let i = laserBeams.length - 1; i >= 0; i--) {
                     laserBeams[i].life -= 0.08;
                     if (laserBeams[i].life <= 0) laserBeams.splice(i, 1);
@@ -1348,9 +1279,6 @@
             }
         }
 
-        // ============================================================
-        // Рендер
-        // ============================================================
         function render() {
             ctx.clearRect(0, 0, W, H);
             drawBackground();
@@ -1377,7 +1305,6 @@
             debris.forEach(d => drawDebrisPiece(d));
             pickupFlashes.forEach(f => drawPickupFlash(f));
 
-            // Меню
             if (gameState === S_MENU) {
                 ctx.textAlign = 'center';
                 ctx.shadowColor = '#ffdd00';
@@ -1386,36 +1313,59 @@
                 ctx.font = 'bold 36px "Arial Black", sans-serif';
                 ctx.strokeStyle = '#000000';
                 ctx.lineWidth = 4;
-                ctx.strokeText('PLANET MUSIC', W / 2, 190);
-                ctx.fillText('PLANET MUSIC', W / 2, 190);
+                ctx.strokeText('PLANET MUSIC', W / 2, 170);
+                ctx.fillText('PLANET MUSIC', W / 2, 170);
 
                 ctx.shadowBlur = 10;
                 ctx.fillStyle = '#00ffcc';
                 ctx.font = 'bold 20px "Arial Black", sans-serif';
-                ctx.strokeText('CROMULON ATTACK', W / 2, 235);
-                ctx.fillText('CROMULON ATTACK', W / 2, 235);
+                ctx.strokeText('CROMULON ATTACK', W / 2, 215);
+                ctx.fillText('CROMULON ATTACK', W / 2, 215);
 
-                const btnX = 80, btnY = 390, btnW = 240, btnH = 60;
+                const btn1X = 55, btn1Y = 355, btn1W = 290, btn1H = 60;
                 ctx.shadowBlur = 25;
                 ctx.shadowColor = '#ff0055';
                 ctx.fillStyle = '#ff0055';
                 ctx.beginPath();
-                ctx.roundRect(btnX, btnY, btnW, btnH, 12);
+                ctx.roundRect(btn1X, btn1Y, btn1W, btn1H, 12);
                 ctx.fill();
                 ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#ff88aa';
+                ctx.lineWidth = 2;
+                ctx.stroke();
                 ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 22px "Arial Black", sans-serif';
-                ctx.fillText('START SHOW', W / 2, btnY + 40);
+                ctx.font = 'bold 20px "Arial Black", sans-serif';
+                ctx.fillText('🏁 FLAG MODE', W / 2, btn1Y + 30);
+                ctx.fillStyle = '#ffccdd';
+                ctx.font = '11px Arial';
+                ctx.fillText('1000 очков → получить флаг', W / 2, btn1Y + 48);
+
+                const btn2X = 55, btn2Y = 435, btn2W = 290, btn2H = 60;
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = '#00ccff';
+                ctx.fillStyle = '#0066cc';
+                ctx.beginPath();
+                ctx.roundRect(btn2X, btn2Y, btn2W, btn2H, 12);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#88ddff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 20px "Arial Black", sans-serif';
+                ctx.fillText('♾️ INFINITY MODE', W / 2, btn2Y + 30);
+                ctx.fillStyle = '#cceeff';
+                ctx.font = '11px Arial';
+                ctx.fillText('Бесконечная игра на очки', W / 2, btn2Y + 48);
 
                 ctx.fillStyle = '#aaaaaa';
-                ctx.font = '14px Arial';
-                ctx.fillText('Tap or click', W / 2, 500);
+                ctx.font = '13px Arial';
+                ctx.fillText('Tap or click', W / 2, 535);
                 ctx.shadowBlur = 0;
                 ctx.textAlign = 'left';
                 return;
             }
 
-            // HUD
             ctx.textAlign = 'left';
             ctx.shadowBlur = 6;
             ctx.shadowColor = '#000000';
@@ -1425,13 +1375,17 @@
             ctx.fillStyle = '#ffcc00';
             ctx.fillText('BEST: ' + highScore, 15, 60);
 
+            ctx.fillStyle = gameMode === 'flag' ? '#ff66aa' : '#66ccff';
+            ctx.font = 'bold 13px "Arial Black", sans-serif';
+            ctx.fillText(gameMode === 'flag' ? '🏁 FLAG' : '♾️ INFINITY', 15, 80);
+
             for (let i = 0; i < lives; i++) {
                 ctx.fillStyle = '#ff3344';
                 ctx.font = '24px Arial';
                 ctx.fillText('❤️', W - 30 - i * 30, 40);
             }
 
-            let iconY = 85;
+            let iconY = 100;
             if (shieldActive) {
                 drawBuffIcon(15, iconY, 'shield', shieldTimer / BUFF_DURATIONS.shield);
                 iconY += 32;
@@ -1444,7 +1398,6 @@
             }
             ctx.shadowBlur = 0;
 
-            // Game Over
             if (gameState === S_OVER) {
                 ctx.fillStyle = 'rgba(0,0,0,0.7)';
                 ctx.fillRect(0, 0, W, H);
@@ -1486,9 +1439,6 @@
             };
         }
 
-        // ============================================================
-        // Ввод
-        // ============================================================
         function handlePointer(e) {
             e.preventDefault();
             const rect = canvas.getBoundingClientRect();
@@ -1498,7 +1448,13 @@
             const touchY = (e.clientY - rect.top) * scaleY;
 
             if (gameState === S_MENU) {
-                if (touchX >= 80 && touchX <= 320 && touchY >= 390 && touchY <= 450) resetGame();
+                if (touchX >= 55 && touchX <= 345 && touchY >= 355 && touchY <= 415) {
+                    gameMode = 'flag';
+                    resetGame();
+                } else if (touchX >= 55 && touchX <= 345 && touchY >= 435 && touchY <= 495) {
+                    gameMode = 'infinity';
+                    resetGame();
+                }
             } else if (gameState === S_PLAY) {
                 cruiser.velocityY = cruiser.jump;
                 thrustTimer = 300;
