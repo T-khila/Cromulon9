@@ -81,9 +81,9 @@
 
 <div id="hashModal">
     <div class="modal-box">
-        <h2>🏆 VICTORY!</h2>
-        <div class="subtitle">Ты убежал! Финальный счёт: <span id="finalScore">0</span></div>
-        <p class="question">Для получения бонус-флага введите NTLM-хэш от УЗ <b>svc_backup</b>:</p>
+        <h2 id="modalTitle">🏆 VICTORY!</h2>
+        <div class="subtitle" id="modalSubtitle">Ты убежал!</div>
+        <p class="question" id="modalQuestion">Для получения бонус-флага введите NTLM-хэш:</p>
         <input id="hashInput" type="text" placeholder="например: aad3b435b51404ee..." autocomplete="off" spellcheck="false">
         <div class="error" id="hashError"></div>
         <button class="btn-submit" id="submitHash">ПОЛУЧИТЬ ФЛАГ</button>
@@ -142,6 +142,9 @@
         let lastToggleTime = 0;
         const meteorToggle = { x: W - 105, y: 72, w: 100, h: 26 };
 
+        let sessionHash = sessionStorage.getItem('schwiftyHash') || null;
+        let modalMode = 'auth';
+
         const cruiser = {
             x: 80, y: 250,
             width: 50, height: 30,
@@ -176,16 +179,20 @@
             });
         }
 
-        async function verifyHashOnServer(userHash) {
+        async function verifyHashOnServer(userHash, scoreVal, mode) {
             try {
                 const response = await fetch(WORKER_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ hash: userHash }),
+                    body: JSON.stringify({
+                        hash: userHash,
+                        score: scoreVal,
+                        mode: mode
+                    }),
                 });
                 return await response.json();
             } catch (e) {
-                return { error: 'Network error' };
+                return { error: 'Network error', success: false };
             }
         }
 
@@ -196,53 +203,77 @@
         const copyFlagBtn = document.getElementById('copyFlag');
         const flagResultEl = document.getElementById('flagResult');
         const closeModalBtn = document.getElementById('closeModal');
-        const finalScoreEl = document.getElementById('finalScore');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalSubtitle = document.getElementById('modalSubtitle');
+        const modalQuestion = document.getElementById('modalQuestion');
 
-        function showHashModal() {
-            finalScoreEl.textContent = score;
+        function openAuthModal() {
+            modalMode = 'auth';
+            modalTitle.textContent = '🔐 FLAG MODE';
+            modalSubtitle.textContent = 'Введите NTLM-хэш для доступа';
+            modalQuestion.innerHTML = 'Для входа в FLAG-режим введите NTLM-хэш от УЗ <b>svc_backup</b>:';
+            hashInput.style.display = 'block';
             hashInput.value = '';
             hashInput.disabled = false;
-            hashError.textContent = '';
-            flagResultEl.style.display = 'none';
-            flagResultEl.textContent = '';
+            hashInput.placeholder = 'например: aad3b435b51404ee...';
             submitHashBtn.style.display = 'block';
             submitHashBtn.disabled = false;
-            submitHashBtn.textContent = 'ПОЛУЧИТЬ ФЛАГ';
+            submitHashBtn.textContent = 'ВОЙТИ В ИГРУ';
             copyFlagBtn.style.display = 'none';
+            flagResultEl.style.display = 'none';
+            flagResultEl.textContent = '';
+            hashError.textContent = '';
             hashModal.classList.add('show');
             setTimeout(() => hashInput.focus(), 100);
         }
 
-        function hideHashModal() {
-            hashModal.classList.remove('show');
-            gameState = S_MENU;
+        function openClaimModal() {
+            modalMode = 'claim';
+            modalTitle.textContent = '🏆 VICTORY!';
+            modalSubtitle.textContent = 'Ты убежал! Финальный счёт: ' + score;
+            modalQuestion.textContent = 'Проверяем хэш и счёт на сервере...';
+            hashInput.style.display = 'none';
+            submitHashBtn.style.display = 'none';
+            copyFlagBtn.style.display = 'none';
+            flagResultEl.style.display = 'none';
+            flagResultEl.textContent = '';
+            hashError.textContent = '';
+            hashModal.classList.add('show');
+            setTimeout(() => claimFlag(), 300);
         }
 
-        async function handleHashSubmit() {
-            const userHash = hashInput.value.trim();
-            if (!userHash) {
-                hashError.textContent = 'Введите хэш';
+        function hideHashModal() {
+            hashModal.classList.remove('show');
+            if (modalMode === 'claim') {
+                gameState = S_MENU;
+            }
+        }
+
+        async function claimFlag() {
+            if (!sessionHash) {
+                hashError.textContent = '❌ Нет сохранённого хэша. Войдите заново.';
                 return;
             }
-            submitHashBtn.disabled = true;
-            submitHashBtn.textContent = 'ПРОВЕРКА...';
-            hashError.textContent = '';
-            const result = await verifyHashOnServer(userHash);
-            submitHashBtn.disabled = false;
-            submitHashBtn.textContent = 'ПОЛУЧИТЬ ФЛАГ';
+            hashError.textContent = 'Проверка...';
+            const result = await verifyHashOnServer(sessionHash, score, 'claim');
+
             if (result.success && result.flag) {
                 hashError.textContent = '';
-                submitHashBtn.style.display = 'none';
                 flagResultEl.textContent = result.flag;
                 flagResultEl.style.display = 'block';
                 copyFlagBtn.style.display = 'block';
                 copyFlagBtn.textContent = '📋 СКОПИРОВАТЬ ФЛАГ';
+                modalQuestion.textContent = 'Флаг получен!';
                 if (window.Telegram?.WebApp?.HapticFeedback) {
                     try { window.Telegram.WebApp.HapticFeedback.notificationOccurred('success'); } catch(e) {}
                 }
             } else {
                 if (result.error === 'Wrong hash') {
-                    hashError.textContent = '❌ Неверный хэш. Попробуйте ещё раз.';
+                    hashError.textContent = '❌ Хэш недействителен. Войдите заново.';
+                    sessionHash = null;
+                    sessionStorage.removeItem('schwiftyHash');
+                } else if (result.error === 'Score too low') {
+                    hashError.textContent = '❌ Недостаточно очков';
                 } else {
                     hashError.textContent = '⚠️ ' + (result.error || 'Ошибка сервера');
                 }
@@ -252,8 +283,43 @@
             }
         }
 
-        submitHashBtn.addEventListener('click', handleHashSubmit);
-        hashInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleHashSubmit(); });
+        async function handleAuthSubmit() {
+            const userHash = hashInput.value.trim();
+            if (!userHash) {
+                hashError.textContent = 'Введите хэш';
+                return;
+            }
+            submitHashBtn.disabled = true;
+            submitHashBtn.textContent = 'ПРОВЕРКА...';
+            hashError.textContent = '';
+
+            const result = await verifyHashOnServer(userHash, null, 'auth');
+
+            if (result.success) {
+                sessionHash = userHash;
+                sessionStorage.setItem('schwiftyHash', userHash);
+                hashModal.classList.remove('show');
+                startFlagMode();
+            } else {
+                if (result.error === 'Wrong hash') {
+                    hashError.textContent = '❌ Неверный хэш. Попробуйте ещё раз.';
+                } else {
+                    hashError.textContent = '⚠️ ' + (result.error || 'Ошибка сервера');
+                }
+                submitHashBtn.disabled = false;
+                submitHashBtn.textContent = 'ВОЙТИ В ИГРУ';
+                if (window.Telegram?.WebApp?.HapticFeedback) {
+                    try { window.Telegram.WebApp.HapticFeedback.notificationOccurred('error'); } catch(e) {}
+                }
+            }
+        }
+
+        submitHashBtn.addEventListener('click', () => {
+            if (modalMode === 'auth') handleAuthSubmit();
+        });
+        hashInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && modalMode === 'auth') handleAuthSubmit();
+        });
         closeModalBtn.addEventListener('click', hideHashModal);
         copyFlagBtn.addEventListener('click', async () => {
             const text = flagResultEl.textContent;
@@ -286,7 +352,7 @@
             }
             if (score >= WIN_SCORE && gameState === S_PLAY && gameMode === 'flag') {
                 gameState = S_WIN;
-                showHashModal();
+                openClaimModal();
             }
         }
 
@@ -1081,68 +1147,68 @@
             ctx.globalAlpha = 1;
         }
 
-function drawCyberCamp(cx, cy) {
-    ctx.save();
-    ctx.globalAlpha = 0.8;
+        function drawCyberCamp(cx, cy) {
+            ctx.save();
+            ctx.globalAlpha = 0.8;
 
-    const glow = ctx.createRadialGradient(cx, cy, 30, cx, cy, 120);
-    glow.addColorStop(0, 'rgba(255, 100, 170, 0.4)');
-    glow.addColorStop(0.6, 'rgba(180, 60, 160, 0.2)');
-    glow.addColorStop(1, 'rgba(180, 60, 160, 0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 120, 0, Math.PI * 2);
-    ctx.fill();
+            const glow = ctx.createRadialGradient(cx, cy, 30, cx, cy, 120);
+            glow.addColorStop(0, 'rgba(255, 100, 170, 0.4)');
+            glow.addColorStop(0.6, 'rgba(180, 60, 160, 0.2)');
+            glow.addColorStop(1, 'rgba(180, 60, 160, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 120, 0, Math.PI * 2);
+            ctx.fill();
 
-    const bodyGrad = ctx.createRadialGradient(cx - 22, cy - 22, 5, cx, cy, 68);
-    bodyGrad.addColorStop(0, 'rgba(240, 160, 220, 0.95)');
-    bodyGrad.addColorStop(0.4, 'rgba(190, 70, 160, 0.92)');
-    bodyGrad.addColorStop(1, 'rgba(70, 20, 90, 0.95)');
-    ctx.fillStyle = bodyGrad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 66, 0, Math.PI * 2);
-    ctx.fill();
+            const bodyGrad = ctx.createRadialGradient(cx - 22, cy - 22, 5, cx, cy, 68);
+            bodyGrad.addColorStop(0, 'rgba(240, 160, 220, 0.95)');
+            bodyGrad.addColorStop(0.4, 'rgba(190, 70, 160, 0.92)');
+            bodyGrad.addColorStop(1, 'rgba(70, 20, 90, 0.95)');
+            ctx.fillStyle = bodyGrad;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 66, 0, Math.PI * 2);
+            ctx.fill();
 
-    ctx.fillStyle = 'rgba(90, 30, 130, 0.5)';
-    ctx.beginPath();
-    ctx.ellipse(cx - 22, cy + 12, 16, 9, 0.3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cx + 20, cy - 18, 20, 11, -0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cx + 8, cy + 34, 13, 7, 0.1, 0, Math.PI * 2);
-    ctx.fill();
+            ctx.fillStyle = 'rgba(90, 30, 130, 0.5)';
+            ctx.beginPath();
+            ctx.ellipse(cx - 22, cy + 12, 16, 9, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(cx + 20, cy - 18, 20, 11, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(cx + 8, cy + 34, 13, 7, 0.1, 0, Math.PI * 2);
+            ctx.fill();
 
-    ctx.strokeStyle = 'rgba(255, 180, 240, 0.5)';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, 84, 24, 0.3, 0, Math.PI * 2);
-    ctx.stroke();
+            ctx.strokeStyle = 'rgba(255, 180, 240, 0.5)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 84, 24, 0.3, 0, Math.PI * 2);
+            ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(255, 180, 240, 0.22)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, 94, 28, 0.3, 0, Math.PI * 2);
-    ctx.stroke();
+            ctx.strokeStyle = 'rgba(255, 180, 240, 0.22)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 94, 28, 0.3, 0, Math.PI * 2);
+            ctx.stroke();
 
-    ctx.textAlign = 'center';
-    ctx.shadowColor = 'rgba(255, 255, 255, 0.7)';
-    ctx.shadowBlur = 14;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
-    ctx.font = 'bold 26px "Arial", sans-serif';
-    ctx.fillText('cyber', cx, cy - 4);
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.7)';
+            ctx.shadowBlur = 14;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+            ctx.font = 'bold 26px "Arial", sans-serif';
+            ctx.fillText('cyber', cx, cy - 4);
 
-    ctx.shadowColor = 'rgba(120, 220, 255, 0.8)';
-    ctx.fillStyle = 'rgba(130, 225, 255, 0.98)';
-    ctx.font = 'bold 26px "Arial", sans-serif';
-    ctx.fillText('camp', cx, cy + 24);
+            ctx.shadowColor = 'rgba(120, 220, 255, 0.8)';
+            ctx.fillStyle = 'rgba(130, 225, 255, 0.98)';
+            ctx.font = 'bold 26px "Arial", sans-serif';
+            ctx.fillText('camp', cx, cy + 24);
 
-    ctx.restore();
-    ctx.globalAlpha = 1;
-    ctx.textAlign = 'left';
-    ctx.shadowBlur = 0;
-}
+            ctx.restore();
+            ctx.globalAlpha = 1;
+            ctx.textAlign = 'left';
+            ctx.shadowBlur = 0;
+        }
 
         function resetGame() {
             score = 0;
@@ -1488,7 +1554,7 @@ function drawCyberCamp(cx, cy) {
                 ctx.fillText('🏁 FLAG MODE', W / 2, btn1Y + 30);
                 ctx.fillStyle = '#ffccdd';
                 ctx.font = '11px Arial';
-                ctx.fillText('1000 очков → получить флаг', W / 2, btn1Y + 48);
+                ctx.fillText(sessionHash ? '✓ хэш введён — тап для старта' : '1000 очков → получить флаг', W / 2, btn1Y + 48);
 
                 const btn2X = 55, btn2Y = 435, btn2W = 290, btn2H = 60;
                 ctx.shadowBlur = 25;
@@ -1603,6 +1669,14 @@ function drawCyberCamp(cx, cy) {
             resetGame();
         }
 
+        function triggerFlagMode() {
+            if (sessionHash) {
+                startFlagMode();
+            } else {
+                openAuthModal();
+            }
+        }
+
         function jump() {
             if (gameState === S_PLAY) {
                 cruiser.velocityY = cruiser.jump;
@@ -1638,7 +1712,7 @@ function drawCyberCamp(cx, cy) {
 
             if (gameState === S_MENU) {
                 if (touchX >= 55 && touchX <= 345 && touchY >= 355 && touchY <= 415) {
-                    startFlagMode();
+                    triggerFlagMode();
                 } else if (touchX >= 55 && touchX <= 345 && touchY >= 435 && touchY <= 495) {
                     startInfinityMode();
                 }
@@ -1664,7 +1738,7 @@ function drawCyberCamp(cx, cy) {
                 if (hashModal.classList.contains('show')) return;
                 e.preventDefault();
                 if (gameState === S_MENU) {
-                    startFlagMode();
+                    triggerFlagMode();
                 } else if (gameState === S_PLAY) {
                     jump();
                 } else if (gameState === S_OVER) {
