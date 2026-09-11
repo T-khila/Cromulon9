@@ -1033,21 +1033,21 @@
             }
         }
 
-        function update() {
+        function update(timeScale, dt) {
             const now = Date.now();
 
             if (gameState === S_MENU) {
                 cruiser.y = 280 + Math.sin(now / 250) * 12;
                 cruiser.tilt = Math.sin(now / 300) * 0.1;
-                updateEffects();
+                updateEffects(timeScale);
                 return;
             }
 
             if (gameState === S_PLAY) {
-                if (thrustTimer > 0) thrustTimer -= 16;
+                if (thrustTimer > 0) thrustTimer -= dt;
 
-                cruiser.velocityY += cruiser.gravity;
-                cruiser.y += cruiser.velocityY;
+                cruiser.velocityY += cruiser.gravity * timeScale;
+                cruiser.y += cruiser.velocityY * timeScale;
                 if (cruiser.y < 0) { cruiser.y = 0; cruiser.velocityY = 0; }
                 if (cruiser.y + cruiser.height > H) {
                     loseLife();
@@ -1066,8 +1066,8 @@
 
                 for (let i = cromulons.length - 1; i >= 0; i--) {
                     const c = cromulons[i];
-                    c.x -= c.speed;
-                    if (c.hitFlash > 0) c.hitFlash--;
+                    c.x -= c.speed * timeScale;
+                    if (c.hitFlash > 0) c.hitFlash -= timeScale;
 
                     if (!c.scored && c.x + c.width < cruiser.x) {
                         c.scored = true;
@@ -1103,8 +1103,8 @@
 
                 for (let i = meteors.length - 1; i >= 0; i--) {
                     const m = meteors[i];
-                    m.x += m.speedX;
-                    m.y += m.speedY;
+                    m.x += m.speedX * timeScale;
+                    m.y += m.speedY * timeScale;
                     if (m.x < -100 || m.x > W + 100 || m.y < -100 || m.y > H + 100) {
                         meteors.splice(i, 1);
                     }
@@ -1112,8 +1112,8 @@
 
                 for (let i = powerups.length - 1; i >= 0; i--) {
                     const p = powerups[i];
-                    p.x -= p.speed;
-                    p.angle += 0.05;
+                    p.x -= p.speed * timeScale;
+                    p.angle += 0.05 * timeScale;
 
                     const dx = (cruiser.x + cruiser.width / 2) - p.x;
                     const dy = (cruiser.y + cruiser.height / 2) - p.y;
@@ -1144,13 +1144,13 @@
                 }
 
                 if (shieldActive) {
-                    shieldTimer -= 16;
+                    shieldTimer -= dt;
                     if (shieldTimer <= 0) { shieldActive = false; shieldTimer = 0; }
                 }
 
                 for (const type of ['rocket', 'laser', 'machinegun']) {
                     if (weaponTimers[type] > 0) {
-                        weaponTimers[type] -= 16;
+                        weaponTimers[type] -= dt;
                         if (weaponTimers[type] <= 0) {
                             weaponTimers[type] = 0;
                         } else if (now >= nextShotTimes[type]) {
@@ -1185,7 +1185,7 @@
                     const dy = ty - r.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     r.angle = Math.atan2(dy, dx);
-                    if (dist < r.speed) {
+                    if (dist < r.speed * timeScale) {
                         createExplosion(tx, ty);
                         if (!r.target.scored) {
                             r.target.scored = true;
@@ -1196,15 +1196,15 @@
                         if (idx !== -1) cromulons.splice(idx, 1);
                         rockets.splice(i, 1);
                     } else {
-                        r.x += (dx / dist) * r.speed;
-                        r.y += (dy / dist) * r.speed;
+                        r.x += (dx / dist) * r.speed * timeScale;
+                        r.y += (dy / dist) * r.speed * timeScale;
                     }
                 }
 
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     const b = bullets[i];
-                    b.x += b.vx;
-                    b.y += b.vy;
+                    b.x += b.vx * timeScale;
+                    b.y += b.vy * timeScale;
 
                     const bx1 = b.x - 6, bx2 = b.x + 4;
                     const by1 = b.y - 2, by2 = b.y + 2;
@@ -1238,12 +1238,12 @@
                 }
 
                 for (let i = laserBeams.length - 1; i >= 0; i--) {
-                    laserBeams[i].life -= 0.08;
+                    laserBeams[i].life -= 0.08 * timeScale;
                     if (laserBeams[i].life <= 0) laserBeams.splice(i, 1);
                 }
 
                 if (invincible) {
-                    invincibleTimer -= 16;
+                    invincibleTimer -= dt;
                     if (invincibleTimer <= 0) {
                         invincible = false;
                         invincibleTimer = 0;
@@ -1251,30 +1251,31 @@
                 }
             }
 
-            updateEffects();
+            updateEffects(timeScale);
         }
 
-        function updateEffects() {
+        function updateEffects(timeScale) {
+            if (!timeScale) timeScale = 1;
             for (let i = explosions.length - 1; i >= 0; i--) {
                 const e = explosions[i];
-                e.radius += (e.maxRadius - e.radius) * 0.18;
-                e.life -= 0.05;
+                e.radius += (e.maxRadius - e.radius) * 0.18 * timeScale;
+                e.life -= 0.05 * timeScale;
                 if (e.life <= 0) explosions.splice(i, 1);
             }
             for (let i = debris.length - 1; i >= 0; i--) {
                 const d = debris[i];
-                d.x += d.vx;
-                d.y += d.vy;
-                d.vx *= 0.97;
-                d.vy *= 0.97;
-                d.vy += 0.12;
-                d.life -= 0.018;
+                d.x += d.vx * timeScale;
+                d.y += d.vy * timeScale;
+                d.vx *= Math.pow(0.97, timeScale);
+                d.vy *= Math.pow(0.97, timeScale);
+                d.vy += 0.12 * timeScale;
+                d.life -= 0.018 * timeScale;
                 if (d.life <= 0) debris.splice(i, 1);
             }
             for (let i = pickupFlashes.length - 1; i >= 0; i--) {
                 const f = pickupFlashes[i];
-                f.radius += (f.maxRadius - f.radius) * 0.2;
-                f.life -= 0.06;
+                f.radius += (f.maxRadius - f.radius) * 0.2 * timeScale;
+                f.life -= 0.06 * timeScale;
                 if (f.life <= 0) pickupFlashes.splice(i, 1);
             }
         }
@@ -1360,7 +1361,7 @@
 
                 ctx.fillStyle = '#aaaaaa';
                 ctx.font = '13px Arial';
-                ctx.fillText('Tap or click', W / 2, 535);
+                ctx.fillText('Tap / Space', W / 2, 535);
                 ctx.shadowBlur = 0;
                 ctx.textAlign = 'left';
                 return;
@@ -1415,7 +1416,7 @@
                 ctx.fillText('Score: ' + score, W / 2, 340);
                 ctx.fillStyle = '#aaaaaa';
                 ctx.font = '16px Arial';
-                ctx.fillText('Tap anywhere to retry', W / 2, 500);
+                ctx.fillText('Tap / Space to retry', W / 2, 500);
                 ctx.shadowBlur = 0;
                 ctx.textAlign = 'left';
             }
@@ -1439,6 +1440,23 @@
             };
         }
 
+        function startFlagMode() {
+            gameMode = 'flag';
+            resetGame();
+        }
+
+        function startInfinityMode() {
+            gameMode = 'infinity';
+            resetGame();
+        }
+
+        function jump() {
+            if (gameState === S_PLAY) {
+                cruiser.velocityY = cruiser.jump;
+                thrustTimer = 300;
+            }
+        }
+
         function handlePointer(e) {
             e.preventDefault();
             const rect = canvas.getBoundingClientRect();
@@ -1449,15 +1467,12 @@
 
             if (gameState === S_MENU) {
                 if (touchX >= 55 && touchX <= 345 && touchY >= 355 && touchY <= 415) {
-                    gameMode = 'flag';
-                    resetGame();
+                    startFlagMode();
                 } else if (touchX >= 55 && touchX <= 345 && touchY >= 435 && touchY <= 495) {
-                    gameMode = 'infinity';
-                    resetGame();
+                    startInfinityMode();
                 }
             } else if (gameState === S_PLAY) {
-                cruiser.velocityY = cruiser.jump;
-                thrustTimer = 300;
+                jump();
             } else if (gameState === S_OVER) {
                 gameState = S_MENU;
             }
@@ -1473,14 +1488,40 @@
             }
         }, { passive: false });
 
-        function gameLoop() {
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.key === ' ') {
+                if (hashModal.classList.contains('show')) return;
+                e.preventDefault();
+                if (gameState === S_MENU) {
+                    startFlagMode();
+                } else if (gameState === S_PLAY) {
+                    jump();
+                } else if (gameState === S_OVER) {
+                    gameState = S_MENU;
+                }
+            } else if (e.code === 'ArrowUp' || e.key === 'ArrowUp') {
+                if (hashModal.classList.contains('show')) return;
+                e.preventDefault();
+                jump();
+            }
+        });
+
+        let lastFrameTime = performance.now();
+
+        function gameLoop(now) {
+            now = now || performance.now();
+            let dt = now - lastFrameTime;
+            lastFrameTime = now;
+            if (dt > 100) dt = 100;
+            const timeScale = dt / 16.6667;
+
             frameCount++;
-            update();
+            update(timeScale, dt);
             render();
             requestAnimationFrame(gameLoop);
         }
 
-        gameLoop();
+        requestAnimationFrame(gameLoop);
     })();
 </script>
 </body>
