@@ -1126,45 +1126,17 @@ function drawCyberCamp(cx, cy) {
     ctx.ellipse(cx, cy, 94, 28, 0.3, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(180, 220, 255, 0.75)';
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    for (let row = 0; row < 2; row++) {
-        const yBase = cy - 44 + row * 14;
-        ctx.beginPath();
-        for (let i = 0; i < 4; i++) {
-            const x = cx - 42 + i * 22;
-            ctx.moveTo(x, yBase);
-            ctx.lineTo(x + 9, yBase - 9);
-            ctx.lineTo(x + 18, yBase);
-        }
-        ctx.stroke();
-    }
-
-    for (let row = 0; row < 2; row++) {
-        const yBase = cy + 34 + row * 14;
-        ctx.beginPath();
-        for (let i = 0; i < 4; i++) {
-            const x = cx - 42 + i * 22;
-            ctx.moveTo(x, yBase);
-            ctx.lineTo(x + 9, yBase - 9);
-            ctx.lineTo(x + 18, yBase);
-        }
-        ctx.stroke();
-    }
-
     ctx.textAlign = 'center';
-    ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
-    ctx.shadowBlur = 12;
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.7)';
+    ctx.shadowBlur = 14;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
     ctx.font = 'bold 26px "Arial", sans-serif';
-    ctx.fillText('cyber', cx, cy - 6);
-    ctx.shadowColor = 'rgba(120, 220, 255, 0.7)';
+    ctx.fillText('cyber', cx, cy - 4);
+
+    ctx.shadowColor = 'rgba(120, 220, 255, 0.8)';
     ctx.fillStyle = 'rgba(130, 225, 255, 0.98)';
     ctx.font = 'bold 26px "Arial", sans-serif';
-    ctx.fillText('camp', cx, cy + 22);
+    ctx.fillText('camp', cx, cy + 24);
 
     ctx.restore();
     ctx.globalAlpha = 1;
