@@ -1,6 +1,10 @@
-const sessions = globalThis.__sessions || (globalThis.__sessions = new Map());
+import crypto from 'crypto';
 
 const MIN_PLAY_TIME_MS = 96 * 1000;
+
+function sign(payload, secret) {
+    return crypto.createHmac('sha256', secret).update(payload).digest('hex');
+}
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -30,19 +34,26 @@ export default async function handler(req, res) {
                 return res.status(403).json({ error: 'Score too low', success: false, score });
             }
 
-            if (!sessionId || typeof sessionId !== 'string') {
+            if (!sessionId || typeof sessionId !== 'string' || !sessionId.includes('.')) {
                 return res.status(403).json({ error: 'No session', success: false });
             }
 
-            const session = sessions.get(sessionId);
-            if (!session) {
-                return res.status(403).json({ error: 'Invalid or expired session', success: false });
-            }
-            if (session.used) {
-                return res.status(403).json({ error: 'Session already used', success: false });
+            const [startedAtStr, signature] = sessionId.split('.');
+            const startedAt = parseInt(startedAtStr);
+
+            if (!startedAt || isNaN(startedAt)) {
+                return res.status(403).json({ error: 'Invalid session', success: false });
             }
 
-            const elapsed = Date.now() - session.startedAt;
+            const secret = process.env.SESSION_SECRET || process.env.SECRET_HASH;
+            const expectedSig = sign(`${startedAt}`, secret);
+
+            if (signature !== expectedSig) {
+                return res.status(403).json({ error: 'Invalid session', success: false });
+            }
+
+            const elapsed = Date.now() - startedAt;
+
             if (elapsed < MIN_PLAY_TIME_MS) {
                 return res.status(403).json({
                     error: 'Too fast',
@@ -52,7 +63,10 @@ export default async function handler(req, res) {
                 });
             }
 
-            session.used = true;
+            // Защита от очень старых сессий (старше 1 часа)
+            if (elapsed > 3600_000) {
+                return res.status(403).json({ error: 'Session expired', success: false });
+            }
 
             const cleanFlag = (process.env.FLAG || '').split('\n')[0].trim();
             return res.status(200).json({ flag: cleanFlag, success: true });
