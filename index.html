@@ -254,32 +254,56 @@
                 hashError.textContent = '❌ Нет сохранённого хэша. Войдите заново.';
                 return;
             }
-            hashError.textContent = 'Проверка...';
-            const result = await verifyHashOnServer(sessionHash, score, 'claim');
 
-            if (result.success && result.flag) {
-                hashError.textContent = '';
-                flagResultEl.textContent = result.flag;
-                flagResultEl.style.display = 'block';
-                copyFlagBtn.style.display = 'block';
-                copyFlagBtn.textContent = '📋 СКОПИРОВАТЬ ФЛАГ';
-                modalQuestion.textContent = 'Флаг получен!';
-                if (window.Telegram?.WebApp?.HapticFeedback) {
-                    try { window.Telegram.WebApp.HapticFeedback.notificationOccurred('success'); } catch(e) {}
-                }
-            } else {
-                if (result.error === 'Wrong hash') {
+            const sessionId = sessionStorage.getItem('schwiftySession') || null;
+            hashError.textContent = 'Проверка...';
+
+            try {
+                const response = await fetch(WORKER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        hash: sessionHash,
+                        score: score,
+                        mode: 'claim',
+                        sessionId: sessionId
+                    })
+                });
+                const result = await response.json();
+
+                if (result.success && result.flag) {
+                    hashError.textContent = '';
+                    flagResultEl.textContent = result.flag;
+                    flagResultEl.style.display = 'block';
+                    copyFlagBtn.style.display = 'block';
+                    copyFlagBtn.textContent = '📋 СКОПИРОВАТЬ ФЛАГ';
+                    modalQuestion.textContent = 'Флаг получен!';
+                    if (window.Telegram?.WebApp?.HapticFeedback) {
+                        try { window.Telegram.WebApp.HapticFeedback.notificationOccurred('success'); } catch(e) {}
+                    }
+                } else if (result.error === 'Too fast') {
+                    const need = Math.ceil((result.required - result.elapsed) / 1000);
+                    hashError.textContent = '⏱ Подождите ещё ' + need + ' сек.';
+                    if (window.Telegram?.WebApp?.HapticFeedback) {
+                        try { window.Telegram.WebApp.HapticFeedback.notificationOccurred('warning'); } catch(e) {}
+                    }
+                } else if (result.error === 'Invalid or expired session' || result.error === 'No session') {
+                    hashError.textContent = '⚠️ Сессия истекла. Войдите в FLAG MODE заново.';
+                    sessionHash = null;
+                    sessionStorage.removeItem('schwiftyHash');
+                    sessionStorage.removeItem('schwiftySession');
+                } else if (result.error === 'Wrong hash') {
                     hashError.textContent = '❌ Хэш недействителен. Войдите заново.';
                     sessionHash = null;
                     sessionStorage.removeItem('schwiftyHash');
+                    sessionStorage.removeItem('schwiftySession');
                 } else if (result.error === 'Score too low') {
                     hashError.textContent = '❌ Недостаточно очков';
                 } else {
                     hashError.textContent = '⚠️ ' + (result.error || 'Ошибка сервера');
                 }
-                if (window.Telegram?.WebApp?.HapticFeedback) {
-                    try { window.Telegram.WebApp.HapticFeedback.notificationOccurred('error'); } catch(e) {}
-                }
+            } catch (e) {
+                hashError.textContent = '❌ Ошибка сети';
             }
         }
 
@@ -295,12 +319,7 @@
 
             const result = await verifyHashOnServer(userHash, null, 'auth');
 
-            if (result.success) {
-                sessionHash = userHash;
-                sessionStorage.setItem('schwiftyHash', userHash);
-                hashModal.classList.remove('show');
-                startFlagMode();
-            } else {
+            if (!result.success) {
                 if (result.error === 'Wrong hash') {
                     hashError.textContent = '❌ Неверный хэш. Попробуйте ещё раз.';
                 } else {
@@ -311,7 +330,32 @@
                 if (window.Telegram?.WebApp?.HapticFeedback) {
                     try { window.Telegram.WebApp.HapticFeedback.notificationOccurred('error'); } catch(e) {}
                 }
+                return;
             }
+
+            let sessionId = null;
+            try {
+                const r = await fetch(WORKER_URL.replace('/api/claim', '/api/start'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await r.json();
+                if (data.success) sessionId = data.sessionId;
+            } catch (e) {
+                console.warn('Session start failed:', e);
+            }
+
+            sessionHash = userHash;
+            sessionStorage.setItem('schwiftyHash', userHash);
+            if (sessionId) {
+                sessionStorage.setItem('schwiftySession', sessionId);
+            } else {
+                sessionStorage.removeItem('schwiftySession');
+            }
+
+            hashModal.classList.remove('show');
+            startFlagMode();
         }
 
         submitHashBtn.addEventListener('click', () => {
