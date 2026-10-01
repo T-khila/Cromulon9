@@ -270,8 +270,36 @@
                         sessionId: sessionId
                     })
                 });
-                const result = await response.json();
 
+                // 1. Читаем ответ как СЫРОЙ ТЕКСТ
+                const responseText = await response.text();
+                
+                // 2. Логируем статус и ответ в консоль (F12 -> Console)
+                console.log('HTTP Status:', response.status);
+                console.log('Raw server response:', responseText);
+
+                // 3. Если статус не 200 (например, 401, 403, 500)
+                if (!response.ok) {
+                    try {
+                        const errData = JSON.parse(responseText);
+                        hashError.textContent = '⚠️ Сервер: ' + (errData.error || response.status);
+                    } catch (e) {
+                        hashError.textContent = '❌ Ошибка сервера (HTTP ' + response.status + '). Проверьте консоль.';
+                    }
+                    return;
+                }
+
+                // 4. Пытаемся распарсить JSON
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (e) {
+                    console.error('Сервер вернул НЕ JSON (возможно HTML):', responseText);
+                    hashError.textContent = '❌ Ошибка формата ответа. Откройте консоль (F12).';
+                    return;
+                }
+
+                // 5. Дальше идет ваша стандартная логика обработки
                 if (result.success && result.flag) {
                     hashError.textContent = '';
                     flagResultEl.textContent = result.flag;
@@ -304,8 +332,9 @@
                     hashError.textContent = '⚠️ ' + (result.error || 'Ошибка сервера');
                 }
             } catch (e) {
-                console.error('Real network error in claimFlag:', e);
-                hashError.textContent = '❌ Ошибка сети: ' + e.message;
+                // Сюда мы попадем ТОЛЬКО если fetch вообще не смог соединиться (нет интернета, DNS)
+                console.error('Критическая сетевая ошибка (fetch failed):', e);
+                hashError.textContent = '❌ Нет соединения с сервером: ' + e.message;
             }
         }
 
