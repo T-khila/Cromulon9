@@ -10,6 +10,7 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed', success: false });
 
@@ -22,8 +23,15 @@ export default async function handler(req, res) {
 
         const normalized = hash.trim().toLowerCase();
         const secretHash = (process.env.SECRET_HASH || '').trim().toLowerCase();
-        if (!secretHash) return res.status(500).json({ error: 'Server misconfigured', success: false });
-        if (normalized !== secretHash) return res.status(403).json({ error: 'Wrong hash', success: false });
+        
+        if (!secretHash) {
+            console.error('Server misconfigured: SECRET_HASH missing');
+            return res.status(500).json({ error: 'Server misconfigured', success: false });
+        }
+        
+        if (normalized !== secretHash) {
+            return res.status(403).json({ error: 'Wrong hash', success: false });
+        }
 
         if (mode === 'auth') {
             return res.status(200).json({ success: true, mode: 'auth' });
@@ -46,6 +54,11 @@ export default async function handler(req, res) {
             }
 
             const secret = process.env.SESSION_SECRET || process.env.SECRET_HASH;
+            if (!secret) {
+                console.error('Server misconfigured: SESSION_SECRET missing');
+                return res.status(500).json({ error: 'Server misconfigured', success: false });
+            }
+
             const expectedSig = sign(`${startedAt}`, secret);
 
             if (signature !== expectedSig) {
@@ -63,7 +76,6 @@ export default async function handler(req, res) {
                 });
             }
 
-            // Защита от очень старых сессий (старше 1 часа)
             if (elapsed > 3600_000) {
                 return res.status(403).json({ error: 'Session expired', success: false });
             }
@@ -74,6 +86,7 @@ export default async function handler(req, res) {
 
         return res.status(400).json({ error: 'Unknown mode', success: false });
     } catch (e) {
+        console.error('Claim API error:', e);
         return res.status(500).json({ error: 'Server error', message: e.message, success: false });
     }
 }
