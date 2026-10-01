@@ -192,7 +192,8 @@
                 });
                 return await response.json();
             } catch (e) {
-                return { error: 'Network error', success: false };
+               console.error('Real network error in verifyHashOnServer:', e);
+               return { error: 'Network error: ' + e.message, success: false };
             }
         }
 
@@ -303,7 +304,8 @@
                     hashError.textContent = '⚠️ ' + (result.error || 'Ошибка сервера');
                 }
             } catch (e) {
-                hashError.textContent = '❌ Ошибка сети';
+                console.error('Real network error in claimFlag:', e);
+                hashError.textContent = '❌ Ошибка сети: ' + e.message;
             }
         }
 
